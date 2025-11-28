@@ -26,9 +26,19 @@ MotorControl::MotorControl()
 #elif SENSOR_TYPE == 1
       sensor(AS5600_I2C),  // 使用SimpleFOC预定义的AS5600配置
 #endif
+#if CURRENT_SENSE_TYPE == 1
+      // 在线电流传感器 - 只使用A和B相（2相检测）
+      current_sense(CURRENT_SENSE_SHUNT_R, CURRENT_SENSE_AMP_GAIN, CURRENT_SENSE_A, CURRENT_SENSE_B),
+#elif CURRENT_SENSE_TYPE == 2
+      // 低侧电流传感器 - 只使用A和B相（2相检测）
+      current_sense(CURRENT_SENSE_SHUNT_R, CURRENT_SENSE_AMP_GAIN, CURRENT_SENSE_LOW_A, CURRENT_SENSE_LOW_B),
+#endif
       driver(DRIVER_PWM_A, DRIVER_PWM_B, DRIVER_PWM_C, DRIVER_ENABLE),
       motor(MOTOR_POLE_PAIRS),
-      target_velocity(0.0f)
+      target_velocity(0.0f),
+      target_angle(0.0f),
+      target_torque(0.0f),
+      control_mode(CONTROL_MODE)
 {
     g_motorControl = this;
 }
@@ -70,19 +80,79 @@ bool MotorControl::init() {
     motor.linkDriver(&driver);
     Serial.println("Driver initialized");
 
-    // 配置电机 - 电压模式速度控制
-    motor.controller = MotionControlType::velocity;
-    motor.torque_controller = TorqueControlType::voltage;
+#if CURRENT_SENSE_TYPE > 0
+    // 初始化电流传感器
+    // 重要：必须先链接驱动器，电流传感器初始化时需要使用驱动器进行校准
+    Serial.println("Initializing current sense...");
+    current_sense.linkDriver(&driver);  // ← 先链接驱动器！
+    if (current_sense.init()) {
+        motor.linkCurrentSense(&current_sense);
+        Serial.println("Current sense initialized");
+    } else {
+        Serial.println("WARNING: Current sense init failed!");
+    }
+#endif
 
-    // PID参数
+    // 配置控制模式
+    switch (control_mode) {
+        case 0:  // 速度控制
+            motor.controller = MotionControlType::velocity;
+            Serial.println("Control mode: Velocity");
+            break;
+        case 1:  // 位置控制
+            motor.controller = MotionControlType::angle;
+            Serial.println("Control mode: Angle");
+            break;
+        case 2:  // 扭矩控制
+            motor.controller = MotionControlType::torque;
+            Serial.println("Control mode: Torque");
+            break;
+        default:
+            motor.controller = MotionControlType::velocity;
+            control_mode = 0;
+            Serial.println("Control mode: Velocity (default)");
+            break;
+    }
+
+    // 配置扭矩控制类型
+#if CURRENT_SENSE_TYPE > 0
+    motor.torque_controller = TorqueControlType::foc_current;  // FOC电流模式
+    Serial.println("Torque control: FOC Current");
+#else
+    motor.torque_controller = TorqueControlType::voltage;  // 电压模式
+    Serial.println("Torque control: Voltage");
+#endif
+
+    // PID速度控制参数
     motor.PID_velocity.P = PID_VELOCITY_P;
     motor.PID_velocity.I = PID_VELOCITY_I;
     motor.PID_velocity.D = PID_VELOCITY_D;
     motor.LPF_velocity.Tf = LPF_VELOCITY_TF;
 
+    // PID位置控制参数
+    motor.P_angle.P = PID_ANGLE_P;
+    motor.P_angle.I = PID_ANGLE_I;
+    motor.P_angle.D = PID_ANGLE_D;
+    motor.LPF_angle.Tf = LPF_ANGLE_TF;
+
+#if CURRENT_SENSE_TYPE > 0
+    // PID电流控制参数（FOC模式）
+    motor.PID_current_q.P = PID_CURRENT_Q_P;
+    motor.PID_current_q.I = PID_CURRENT_Q_I;
+    motor.PID_current_q.D = PID_CURRENT_Q_D;
+    motor.PID_current_d.P = PID_CURRENT_D_P;
+    motor.PID_current_d.I = PID_CURRENT_D_I;
+    motor.PID_current_d.D = PID_CURRENT_D_D;
+    motor.LPF_current_q.Tf = LPF_CURRENT_TF;
+    motor.LPF_current_d.Tf = LPF_CURRENT_TF;
+#endif
+
     // 限制参数
     motor.voltage_limit = MOTOR_VOLTAGE_LIMIT;
     motor.velocity_limit = MOTOR_VELOCITY_LIMIT;
+#if CURRENT_SENSE_TYPE > 0
+    motor.current_limit = MOTOR_CURRENT_LIMIT;
+#endif
 
     // 初始化电机
     motor.init();
@@ -120,6 +190,16 @@ float MotorControl::getTargetVelocity() {
     return target_velocity;
 }
 
+// 获取目标角度
+float MotorControl::getTargetAngle() {
+    return target_angle;
+}
+
+// 获取目标扭矩
+float MotorControl::getTargetTorque() {
+    return target_torque;
+}
+
 // 设置目标速度
 void MotorControl::setTargetVelocity(float velocity) {
     // 限制速度范围
@@ -136,6 +216,108 @@ void MotorControl::setTargetVelocity(float velocity) {
     Serial.print(target_velocity);
     Serial.println(" rad/s");
 }
+
+// 设置目标角度
+void MotorControl::setTargetAngle(float angle) {
+    target_angle = angle;
+
+    Serial.print("Target angle set to: ");
+    Serial.print(target_angle);
+    Serial.println(" rad");
+}
+
+// 设置目标扭矩
+void MotorControl::setTargetTorque(float torque) {
+#if CURRENT_SENSE_TYPE > 0
+    // 限制电流范围
+    if (torque > MOTOR_CURRENT_LIMIT) {
+        torque = MOTOR_CURRENT_LIMIT;
+    }
+    if (torque < -MOTOR_CURRENT_LIMIT) {
+        torque = -MOTOR_CURRENT_LIMIT;
+    }
+#endif
+
+    target_torque = torque;
+
+    Serial.print("Target torque set to: ");
+    Serial.print(target_torque);
+#if CURRENT_SENSE_TYPE > 0
+    Serial.println(" A");
+#else
+    Serial.println(" V");
+#endif
+}
+
+// 切换控制模式
+void MotorControl::setControlMode(int mode) {
+    if (mode < 0 || mode > 2) {
+        Serial.println("Invalid control mode! Use 0=velocity, 1=angle, 2=torque");
+        return;
+    }
+
+    control_mode = mode;
+
+    switch (control_mode) {
+        case 0:
+            motor.controller = MotionControlType::velocity;
+            Serial.println("Control mode changed to: Velocity");
+            break;
+        case 1:
+            motor.controller = MotionControlType::angle;
+            Serial.println("Control mode changed to: Angle");
+            break;
+        case 2:
+            motor.controller = MotionControlType::torque;
+            Serial.println("Control mode changed to: Torque");
+            break;
+    }
+}
+
+// 获取控制模式
+int MotorControl::getControlMode() {
+    return control_mode;
+}
+
+#if CURRENT_SENSE_TYPE > 0
+// 获取A相电流
+float MotorControl::getCurrentA() {
+    return current_sense.getPhaseCurrents().a;
+}
+
+// 获取B相电流
+float MotorControl::getCurrentB() {
+    return current_sense.getPhaseCurrents().b;
+}
+
+// 获取C相电流
+float MotorControl::getCurrentC() {
+    return current_sense.getPhaseCurrents().c;
+}
+
+// 打印电流信息
+void MotorControl::printCurrentInfo() {
+    PhaseCurrent_s currents = current_sense.getPhaseCurrents();
+    DQCurrent_s dq_currents = current_sense.getFOCCurrents(motor.electrical_angle);
+
+    Serial.println("========== Current Info ==========");
+    Serial.print("Phase A: ");
+    Serial.print(currents.a, 3);
+    Serial.print(" A, Phase B: ");
+    Serial.print(currents.b, 3);
+    Serial.print(" A, Phase C: ");
+    Serial.print(currents.c, 3);
+    Serial.println(" A");
+
+    Serial.print("Current Q (torque): ");
+    Serial.print(dq_currents.q, 3);
+    Serial.print(" A, Current D (flux): ");
+    Serial.print(dq_currents.d, 3);
+    Serial.println(" A");
+
+    Serial.println("==================================");
+}
+#endif
 
 // 打印传感器信息
 void MotorControl::printSensorInfo() {
@@ -247,6 +429,14 @@ void MotorControl::printSensorInfo() {
     Serial.print(" V, Voltage D: ");
     Serial.print(motor.voltage.d, 2);
     Serial.println(" V");
+
+#if CURRENT_SENSE_TYPE > 0
+    Serial.print("Current SP: ");
+    Serial.print(motor.current_sp, 3);
+    Serial.print(" A, Current Limit: ");
+    Serial.print(motor.current_limit, 3);
+    Serial.println(" A");
+#endif
 
     Serial.println("====================================");
     Serial.println();

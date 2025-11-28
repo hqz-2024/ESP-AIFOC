@@ -120,7 +120,7 @@ void handleClient()      // 处理客户端请求
 ### 修改电机参数
 编辑 `user_config.h`：
 ```cpp
-#define MOTOR_POLE_PAIRS    11      // 你的电机极对数
+#define MOTOR_POLE_PAIRS    7      // 你的电机极对数
 #define DRIVER_VOLTAGE      12.0f   // 电源电压
 ```
 

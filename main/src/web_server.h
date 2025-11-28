@@ -23,10 +23,18 @@ private:
     // 路由处理函数
     void handleRoot();
     void handleSetSpeed();
-    
+    void handleSetAngle();
+    void handleSetTorque();
+    void handleSetMode();
+    void handleSetControl();  // 统一控制接口
+
     // 静态包装函数（用于WebServer回调）
     static void handleRootStatic();
     static void handleSetSpeedStatic();
+    static void handleSetAngleStatic();
+    static void handleSetTorqueStatic();
+    static void handleSetModeStatic();
+    static void handleSetControlStatic();  // 统一控制接口
     
     // 静态实例指针
     static WebServerManager* instance;

@@ -51,25 +51,34 @@ void loop() {
     // FOC算法循环（高优先级）
     motorControl.loopFOC();
 
-    // 运动控制
-    motorControl.move(motorControl.getTargetVelocity());
+    // 运动控制 - 根据控制模式使用不同的目标值
+    int mode = motorControl.getControlMode();
+    switch (mode) {
+        case 0:  // 速度控制
+            motorControl.move(motorControl.getTargetVelocity());
+            break;
+        case 1:  // 位置控制
+            motorControl.move(motorControl.getTargetAngle());
+            break;
+        case 2:  // 扭矩控制
+            motorControl.move(motorControl.getTargetTorque());
+            break;
+    }
 
     // 处理Web请求
     if (wifiManager.isConnected()) {
         webServer.handleClient();
     }
 
-    // 定期输出详细传感器信息
+    // 定期输出状态信息
     static unsigned long last_print = 0;
     if (millis() - last_print > STATUS_PRINT_INTERVAL) {
         motorControl.printSensorInfo();
-        Serial.print("Speed: ");
-        Serial.print(motorControl.getVelocity(), 2);
-        Serial.print(" rad/s, Angle: ");
-        Serial.print(motorControl.getAngle(), 2);
-        Serial.print(" rad, Target: ");
-        Serial.print(motorControl.getTargetVelocity(), 2);
-        Serial.println(" rad/s");
+
+#if CURRENT_SENSE_TYPE > 0
+        motorControl.printCurrentInfo();
+#endif
+
         last_print = millis();
     }
 }

@@ -14,8 +14,8 @@
 #define SENSOR_TYPE         1
 
 // 编码器配置（仅当SENSOR_TYPE=0时使用）
-#define ENCODER_PIN_A       2
-#define ENCODER_PIN_B       3
+#define ENCODER_PIN_A       8
+#define ENCODER_PIN_B       9
 #define ENCODER_PPR         2048        // 编码器每转脉冲数
 
 // AS5600配置（仅当SENSOR_TYPE=1时使用）
@@ -28,22 +28,59 @@
 #define DRIVER_PWM_B        6
 #define DRIVER_PWM_C        7
 #define DRIVER_ENABLE       10
-#define DRIVER_VOLTAGE      12.0f       // 电源电压 (V)
+#define DRIVER_VOLTAGE      11.0f       // 电源电压 (V)
 #define DRIVER_PWM_FREQ     20000       // PWM频率 (Hz)
 
 // ==================== 电机配置 ====================
-#define MOTOR_POLE_PAIRS    11          // 电机极对数
+#define MOTOR_POLE_PAIRS    7          // 电机极对数
+
+// ==================== 电流传感器配置 ====================
+// 电流传感器类型：0=无电流传感器, 1=在线电流传感器(inline), 2=低侧电流传感器(lowside)
+#define CURRENT_SENSE_TYPE  1
+
+// 在线电流传感器配置（CURRENT_SENSE_TYPE=1）
+// 注意：SimpleFOC支持2相电流检测（A和B相），C相可以通过计算得出（Ic = -Ia - Ib）
+#define CURRENT_SENSE_A     3           // A相电流检测引脚（ADC）
+#define CURRENT_SENSE_B     4           // B相电流检测引脚（ADC）
+#define CURRENT_SENSE_SHUNT_R   0.01f   // 采样电阻阻值（欧姆）
+#define CURRENT_SENSE_AMP_GAIN  20.0f   // 运放增益
+
+// 低侧电流传感器配置（CURRENT_SENSE_TYPE=2）
+// 注意：SimpleFOC支持2相电流检测（A和B相），C相可以通过计算得出（Ic = -Ia - Ib）
+#define CURRENT_SENSE_LOW_A 1           // A相低侧电流检测引脚（ADC）
+#define CURRENT_SENSE_LOW_B 2           // B相低侧电流检测引脚（ADC）
+
+// ==================== 控制模式配置 ====================
+// 初始控制模式：0=速度控制(velocity), 1=位置控制(angle), 2=扭矩控制(torque)
+// 注意：运行时可通过Web界面动态切换控制模式，此处仅为启动时的初始模式
+#define CONTROL_MODE        0
 
 // ==================== 控制参数 ====================
 // PID速度控制参数
-#define PID_VELOCITY_P      0.2f
-#define PID_VELOCITY_I      20.0f
+#define PID_VELOCITY_P      0.1f
+#define PID_VELOCITY_I      0.0f
 #define PID_VELOCITY_D      0.0f
-#define LPF_VELOCITY_TF     0.01f       // 速度低通滤波时间常数
+#define LPF_VELOCITY_TF     0.5f       // 速度低通滤波时间常数
+
+// PID位置控制参数
+#define PID_ANGLE_P         0.2f
+#define PID_ANGLE_I         10.0f
+#define PID_ANGLE_D         0.0f
+#define LPF_ANGLE_TF        0.01f       // 位置低通滤波时间常数
+
+// PID电流控制参数（FOC电流模式）
+#define PID_CURRENT_Q_P     0.1f
+#define PID_CURRENT_Q_I     0.0f
+#define PID_CURRENT_Q_D     0.0f
+#define PID_CURRENT_D_P     0.1f
+#define PID_CURRENT_D_I     0.0f
+#define PID_CURRENT_D_D     0.0f
+#define LPF_CURRENT_TF      0.005f      // 电流低通滤波时间常数
 
 // 限制参数
-#define MOTOR_VOLTAGE_LIMIT     6.0f    // 电压限制 (V)
-#define MOTOR_VELOCITY_LIMIT    20.0f   // 速度限制 (rad/s)
+#define MOTOR_VOLTAGE_LIMIT     11.0f   // 电压限制 (V)
+#define MOTOR_VELOCITY_LIMIT    50.0f   // 速度限制 (rad/s)
+#define MOTOR_CURRENT_LIMIT     1.0f    // 电流限制 (A) 
 
 // ==================== Web界面配置 ====================
 #define WEB_REFRESH_INTERVAL    10000   // 网页自动刷新间隔 (ms)
