@@ -57,16 +57,16 @@
 
 // ==================== 控制参数 ====================
 // PID速度控制参数
-#define PID_VELOCITY_P      0.5f        // 比例系数（增大以提高响应）
-#define PID_VELOCITY_I      20.0f       // 积分系数（恢复积分作用）
+#define PID_VELOCITY_P      0.9f        // 比例系数（增大以提高响应）
+#define PID_VELOCITY_I      5.4f       // 积分系数（恢复积分作用）
 #define PID_VELOCITY_D      0.0f
-#define LPF_VELOCITY_TF     0.5f       // 速度低通滤波时间常数（减小以提高响应）
+#define LPF_VELOCITY_TF     0.1f       // 速度低通滤波时间常数（减小以提高响应）
 
 // PID位置控制参数
-#define PID_ANGLE_P         1.0f       // 增大位置环P
+#define PID_ANGLE_P         7.0f       // 增大位置环P
 #define PID_ANGLE_I         0.0f        // 位置环通常不需要积分
 #define PID_ANGLE_D         0.0f
-#define LPF_ANGLE_TF        0.5f       // 位置低通滤波时间常数
+#define LPF_ANGLE_TF        0.1f       // 位置低通滤波时间常数
 
 // PID电流控制参数（FOC电流模式）
 #define PID_CURRENT_Q_P     1.0f        // Q轴电流P（增大）

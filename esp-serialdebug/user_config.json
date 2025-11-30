@@ -1,0 +1,68 @@
+{
+  "_comment": "FOC串口调试上位机 - 用户配置文件",
+  "_description": "修改此文件可以设置程序启动时的默认参数",
+  
+  "serial": {
+    "_comment": "串口设置",
+    "baudrate": 115200,
+    "default_port": ""
+  },
+  
+  "pid_velocity": {
+    "_comment": "速度环PID参数",
+    "p": 0.9,
+    "i": 9.0,
+    "d": 0.0,
+    "lpf": 0.1
+  },
+  
+  "pid_angle": {
+    "_comment": "位置环PID参数",
+    "p": 7.0,
+    "i": 0.0,
+    "d": 0.0,
+    "lpf": 0.1
+  },
+  
+  "pid_current_q": {
+    "_comment": "Q轴电流环PID参数",
+    "p": 1.0,
+    "i": 0.0,
+    "d": 0.0,
+    "lpf": 0.1
+  },
+  
+  "pid_current_d": {
+    "_comment": "D轴电流环PID参数",
+    "p": 1.0,
+    "i": 0.0,
+    "d": 0.0,
+    "lpf": 0.1
+  },
+  
+  "limits": {
+    "_comment": "限制参数",
+    "voltage": 11.0,
+    "velocity": 50.0,
+    "current": 3.0
+  },
+  
+  "sync": {
+    "_comment": "参数自动同步设置",
+    "enabled": true,
+    "interval": 10
+  },
+  
+  "control": {
+    "_comment": "控制设置",
+    "default_mode": "VEL",
+    "default_target": 0.0
+  },
+  
+  "plot": {
+    "_comment": "绘图设置",
+    "max_points": 2000,
+    "update_interval": 100
+  }
+}
+

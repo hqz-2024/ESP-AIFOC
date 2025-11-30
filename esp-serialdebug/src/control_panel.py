@@ -3,9 +3,9 @@
 包含串口设置、控制模式、PID参数、限幅设置等
 """
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, 
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
     QComboBox, QPushButton, QLineEdit, QFormLayout, QDoubleSpinBox,
-    QTabWidget, QMessageBox
+    QTabWidget, QMessageBox, QCheckBox, QSpinBox
 )
 from PyQt5.QtCore import pyqtSignal
 from serial_manager import SerialManager
@@ -230,12 +230,67 @@ class LimitWidget(QGroupBox):
         layout.addRow("电流:", curr_layout)
 
 
+class SyncWidget(QGroupBox):
+    """参数同步设置组件"""
+    sync_enabled_changed = pyqtSignal(bool)  # 同步开关状态改变
+    sync_interval_changed = pyqtSignal(int)  # 同步间隔改变（秒）
+    sync_now_requested = pyqtSignal()        # 立即同步请求
+
+    def __init__(self, parent=None):
+        super().__init__("参数同步", parent)
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QFormLayout(self)
+
+        # 自动同步开关
+        self.auto_sync_checkbox = QCheckBox("启用自动同步")
+        self.auto_sync_checkbox.setChecked(True)
+        self.auto_sync_checkbox.stateChanged.connect(
+            lambda state: self.sync_enabled_changed.emit(state == 2))
+        layout.addRow(self.auto_sync_checkbox)
+
+        # 同步间隔
+        interval_layout = QHBoxLayout()
+        self.interval_spin = QSpinBox()
+        self.interval_spin.setRange(5, 300)  # 5秒到5分钟
+        self.interval_spin.setValue(10)
+        self.interval_spin.setSuffix(" 秒")
+        self.interval_spin.valueChanged.connect(self.sync_interval_changed.emit)
+        interval_layout.addWidget(self.interval_spin)
+        layout.addRow("同步间隔:", interval_layout)
+
+        # 立即同步按钮
+        self.sync_now_btn = QPushButton("立即同步")
+        self.sync_now_btn.clicked.connect(self.sync_now_requested.emit)
+        layout.addRow(self.sync_now_btn)
+
+        # 同步状态显示
+        self.sync_status_label = QLabel("等待同步...")
+        self.sync_status_label.setStyleSheet("color: gray; font-size: 9pt;")
+        layout.addRow("状态:", self.sync_status_label)
+
+    def set_sync_status(self, status: str, color: str = "gray"):
+        """设置同步状态显示"""
+        self.sync_status_label.setText(status)
+        self.sync_status_label.setStyleSheet(f"color: {color}; font-size: 9pt;")
+
+    def is_auto_sync_enabled(self) -> bool:
+        """获取自动同步是否启用"""
+        return self.auto_sync_checkbox.isChecked()
+
+    def get_sync_interval(self) -> int:
+        """获取同步间隔（秒）"""
+        return self.interval_spin.value()
+
+
 class ControlPanel(QWidget):
     """控制面板主组件"""
     # 信号转发
     connect_requested = pyqtSignal(str, int)
     disconnect_requested = pyqtSignal()
     send_command = pyqtSignal(str)  # 发送命令信号
+    sync_params_requested = pyqtSignal()  # 请求同步参数信号
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -256,13 +311,13 @@ class ControlPanel(QWidget):
         # PID设置（使用Tab）
         pid_tab = QTabWidget()
         self.pid_vel = PIDWidget("速度环 PID", "VEL")
-        self.pid_vel.set_values(0.1, 0.0, 0.0, 0.5)
+        self.pid_vel.set_values(0.5, 20.0, 0.0, 0.01)  # 更新默认值
         self.pid_ang = PIDWidget("位置环 PID", "ANG")
-        self.pid_ang.set_values(0.2, 10.0, 0.0, 0.01)
+        self.pid_ang.set_values(20.0, 0.0, 0.0, 0.05)  # 更新默认值
         self.pid_iq = PIDWidget("Q轴电流环 PID", "IQ")
-        self.pid_iq.set_values(0.1, 0.0, 0.0, 0.005)
+        self.pid_iq.set_values(1.0, 3.0, 0.0, 0.005)  # 更新默认值
         self.pid_id = PIDWidget("D轴电流环 PID", "ID")
-        self.pid_id.set_values(0.1, 0.0, 0.0, 0.005)
+        self.pid_id.set_values(1.0, 3.0, 0.0, 0.005)  # 更新默认值
 
         pid_tab.addTab(self.pid_vel, "速度")
         pid_tab.addTab(self.pid_ang, "位置")
@@ -273,6 +328,10 @@ class ControlPanel(QWidget):
         # 限制参数
         self.limit_widget = LimitWidget()
         layout.addWidget(self.limit_widget)
+
+        # 参数同步
+        self.sync_widget = SyncWidget()
+        layout.addWidget(self.sync_widget)
 
         layout.addStretch()
 
@@ -292,6 +351,9 @@ class ControlPanel(QWidget):
 
         # 限制参数
         self.limit_widget.limit_changed.connect(self._on_limit_changed)
+
+        # 参数同步
+        self.sync_widget.sync_now_requested.connect(self.sync_params_requested)
 
     def _on_mode_changed(self, mode: str):
         """模式改变"""
@@ -316,4 +378,50 @@ class ControlPanel(QWidget):
     def set_connected(self, connected: bool):
         """设置连接状态"""
         self.serial_widget.set_connected(connected)
+
+    def get_all_params(self) -> dict:
+        """获取所有当前参数"""
+        return {
+            'pid_vel': {
+                'p': self.pid_vel.p_spin.value(),
+                'i': self.pid_vel.i_spin.value(),
+                'd': self.pid_vel.d_spin.value(),
+                'lpf': self.pid_vel.lpf_spin.value()
+            },
+            'pid_ang': {
+                'p': self.pid_ang.p_spin.value(),
+                'i': self.pid_ang.i_spin.value(),
+                'd': self.pid_ang.d_spin.value(),
+                'lpf': self.pid_ang.lpf_spin.value()
+            },
+            'pid_iq': {
+                'p': self.pid_iq.p_spin.value(),
+                'i': self.pid_iq.i_spin.value(),
+                'd': self.pid_iq.d_spin.value(),
+                'lpf': self.pid_iq.lpf_spin.value()
+            },
+            'pid_id': {
+                'p': self.pid_id.p_spin.value(),
+                'i': self.pid_id.i_spin.value(),
+                'd': self.pid_id.d_spin.value(),
+                'lpf': self.pid_id.lpf_spin.value()
+            },
+            'limits': {
+                'volt': self.limit_widget.volt_spin.value(),
+                'vel': self.limit_widget.vel_spin.value(),
+                'curr': self.limit_widget.curr_spin.value()
+            }
+        }
+
+    def set_sync_status(self, status: str, color: str = "gray"):
+        """设置同步状态"""
+        self.sync_widget.set_sync_status(status, color)
+
+    def is_auto_sync_enabled(self) -> bool:
+        """获取自动同步是否启用"""
+        return self.sync_widget.is_auto_sync_enabled()
+
+    def get_sync_interval(self) -> int:
+        """获取同步间隔（秒）"""
+        return self.sync_widget.get_sync_interval()
 
