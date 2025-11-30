@@ -5,6 +5,7 @@
  * - motor_control: 电机FOC控制
  * - wifi_manager: WiFi连接管理
  * - web_server: Web控制界面
+ * - serial_protocol: 串口通讯协议
  *
  * 配置文件：user_config.h
  */
@@ -13,16 +14,22 @@
 #include "src/motor_control.h"
 #include "src/wifi_manager.h"
 #include "src/web_server.h"
+#include "src/serial_protocol.h"
 
 // 创建功能模块对象
 MotorControl motorControl;
 WiFiManager wifiManager;
 WebServerManager webServer(&motorControl);
+SerialProtocol serialProtocol(&motorControl);
 
 void setup() {
     // 初始化串口
     Serial.begin(SERIAL_BAUDRATE);
     delay(1000);
+
+    // 初始化串口协议
+    serialProtocol.begin();
+
     Serial.println("\n========================================");
     Serial.println("ESP32 FOC Motor Control System");
     Serial.println("========================================\n");
@@ -65,20 +72,14 @@ void loop() {
             break;
     }
 
+    // 处理串口命令
+    serialProtocol.processCommands();
+
+    // 自动发送串口数据
+    serialProtocol.update();
+
     // 处理Web请求
     if (wifiManager.isConnected()) {
         webServer.handleClient();
-    }
-
-    // 定期输出状态信息
-    static unsigned long last_print = 0;
-    if (millis() - last_print > STATUS_PRINT_INTERVAL) {
-        motorControl.printSensorInfo();
-
-#if CURRENT_SENSE_TYPE > 0
-        motorControl.printCurrentInfo();
-#endif
-
-        last_print = millis();
     }
 }

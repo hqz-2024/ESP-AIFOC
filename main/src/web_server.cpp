@@ -98,6 +98,15 @@ void WebServerManager::handleRoot() {
     html += "<h1>🎛️ ESP32 FOC电机控制</h1>";
     html += "<div class='mode-badge'><span class='badge'>" + modeNames[mode] + "</span></div>";
 
+    // 显示控制权状态
+    MotorControl::ControlSource source = motorControl->getControlSource();
+    String controlSourceName[] = {"无", "Web端", "串口上位机"};
+    String controlColor[] = {"#999", "#4CAF50", "#ff9800"};
+    html += "<div style='text-align:center; margin:10px 0;'>";
+    html += "<span style='color:" + controlColor[source] + "; font-weight:bold;'>";
+    html += "🎮 当前控制权：" + controlSourceName[source];
+    html += "</span></div>";
+
     // 状态显示
     html += "<div class='status'>";
     html += "<p><strong>📊 当前速度:</strong> " + String(motorControl->getVelocity(), 2) + " rad/s</p>";
@@ -307,6 +316,20 @@ void WebServerManager::handleSetMode() {
 void WebServerManager::handleSetControl() {
     if (!server.hasArg("mode")) {
         server.send(400, "text/plain", "Missing mode parameter");
+        return;
+    }
+
+    // 检查控制权限
+    if (!motorControl->checkControlPermission(MotorControl::CONTROL_WEB)) {
+        String html = "<!DOCTYPE html><html><head>";
+        html += "<meta charset='UTF-8'>";
+        html += "<title>控制权限被占用</title></head><body>";
+        html += "<h1 style='color:red;'>⚠️ 控制权限被占用</h1>";
+        html += "<p>当前控制权被<strong>串口上位机</strong>占用</p>";
+        html += "<p>Web端仅可查看数据，无法控制电机</p>";
+        html += "<p><a href='/'>返回主页</a></p>";
+        html += "</body></html>";
+        server.send(403, "text/html", html);
         return;
     }
 

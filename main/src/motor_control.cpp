@@ -38,7 +38,8 @@ MotorControl::MotorControl()
       target_velocity(0.0f),
       target_angle(0.0f),
       target_torque(0.0f),
-      control_mode(CONTROL_MODE)
+      control_mode(CONTROL_MODE),
+      current_control_source(CONTROL_NONE)
 {
     g_motorControl = this;
 }
@@ -290,9 +291,21 @@ float MotorControl::getCurrentB() {
     return current_sense.getPhaseCurrents().b;
 }
 
-// 获取C相电流
+// 获取C相电流（通过计算得到：Ic = -Ia - Ib）
 float MotorControl::getCurrentC() {
-    return current_sense.getPhaseCurrents().c;
+    PhaseCurrent_s currents = current_sense.getPhaseCurrents();
+    // 基尔霍夫电流定律：Ia + Ib + Ic = 0
+    return -(currents.a + currents.b);
+}
+
+// 获取Q轴电流
+float MotorControl::getCurrentQ() {
+    return current_sense.getFOCCurrents(motor.electrical_angle).q;
+}
+
+// 获取D轴电流
+float MotorControl::getCurrentD() {
+    return current_sense.getFOCCurrents(motor.electrical_angle).d;
 }
 
 // 打印电流信息
@@ -300,14 +313,17 @@ void MotorControl::printCurrentInfo() {
     PhaseCurrent_s currents = current_sense.getPhaseCurrents();
     DQCurrent_s dq_currents = current_sense.getFOCCurrents(motor.electrical_angle);
 
+    // 计算C相电流（Ic = -Ia - Ib）
+    float current_c = -(currents.a + currents.b);
+
     Serial.println("========== Current Info ==========");
     Serial.print("Phase A: ");
     Serial.print(currents.a, 3);
     Serial.print(" A, Phase B: ");
     Serial.print(currents.b, 3);
     Serial.print(" A, Phase C: ");
-    Serial.print(currents.c, 3);
-    Serial.println(" A");
+    Serial.print(current_c, 3);
+    Serial.println(" A (calculated)");
 
     Serial.print("Current Q (torque): ");
     Serial.print(dq_currents.q, 3);
@@ -318,6 +334,128 @@ void MotorControl::printCurrentInfo() {
     Serial.println("==================================");
 }
 #endif
+
+// PID参数设置
+void MotorControl::setPIDVelocity(float P, float I, float D, float LPF) {
+    motor.PID_velocity.P = P;
+    motor.PID_velocity.I = I;
+    motor.PID_velocity.D = D;
+    motor.LPF_velocity.Tf = LPF;
+}
+
+void MotorControl::setPIDAngle(float P, float I, float D, float LPF) {
+    motor.P_angle.P = P;
+    motor.P_angle.I = I;
+    motor.P_angle.D = D;
+    motor.LPF_angle.Tf = LPF;
+}
+
+void MotorControl::setPIDCurrentQ(float P, float I, float D, float LPF) {
+#if CURRENT_SENSE_TYPE > 0
+    motor.PID_current_q.P = P;
+    motor.PID_current_q.I = I;
+    motor.PID_current_q.D = D;
+    motor.LPF_current_q.Tf = LPF;
+#endif
+}
+
+void MotorControl::setPIDCurrentD(float P, float I, float D, float LPF) {
+#if CURRENT_SENSE_TYPE > 0
+    motor.PID_current_d.P = P;
+    motor.PID_current_d.I = I;
+    motor.PID_current_d.D = D;
+    motor.LPF_current_d.Tf = LPF;
+#endif
+}
+
+// 限制参数设置
+void MotorControl::setVoltageLimit(float limit) {
+    motor.voltage_limit = limit;
+}
+
+void MotorControl::setVelocityLimit(float limit) {
+    motor.velocity_limit = limit;
+}
+
+void MotorControl::setCurrentLimit(float limit) {
+#if CURRENT_SENSE_TYPE > 0
+    motor.current_limit = limit;
+#endif
+}
+
+// 获取传感器数据
+float MotorControl::getSensorAngle() {
+#if SENSOR_TYPE == 0
+    return encoder.getAngle();
+#elif SENSOR_TYPE == 1
+    return sensor.getAngle();
+#else
+    return 0;
+#endif
+}
+
+float MotorControl::getSensorVelocity() {
+#if SENSOR_TYPE == 0
+    return encoder.getVelocity();
+#elif SENSOR_TYPE == 1
+    return sensor.getVelocity();
+#else
+    return 0;
+#endif
+}
+
+// 获取电压数据
+float MotorControl::getVoltageQ() {
+    return motor.voltage.q;
+}
+
+float MotorControl::getVoltageD() {
+    return motor.voltage.d;
+}
+
+// 获取电流设定值和限制
+float MotorControl::getCurrentSP() {
+    return motor.current_sp;
+}
+
+float MotorControl::getCurrentLimit() {
+#if CURRENT_SENSE_TYPE > 0
+    return motor.current_limit;
+#else
+    return 0;
+#endif
+}
+
+// 控制权限管理
+void MotorControl::setControlSource(ControlSource source) {
+    current_control_source = source;
+}
+
+MotorControl::ControlSource MotorControl::getControlSource() {
+    return current_control_source;
+}
+
+bool MotorControl::checkControlPermission(ControlSource source) {
+    // 如果没有控制源，允许任何源控制
+    if (current_control_source == CONTROL_NONE) {
+        current_control_source = source;
+        return true;
+    }
+
+    // 串口优先级最高，可以抢占控制权
+    if (source == CONTROL_SERIAL) {
+        current_control_source = source;
+        return true;
+    }
+
+    // Web端只能在没有其他控制源时控制
+    if (source == CONTROL_WEB && current_control_source == CONTROL_WEB) {
+        return true;
+    }
+
+    // 其他情况拒绝
+    return false;
+}
 
 // 打印传感器信息
 void MotorControl::printSensorInfo() {

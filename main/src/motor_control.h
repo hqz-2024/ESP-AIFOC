@@ -41,6 +41,40 @@ public:
     void setControlMode(int mode);  // 0=velocity, 1=angle, 2=torque
     int getControlMode();
 
+    // PID参数设置
+    void setPIDVelocity(float P, float I, float D, float LPF);
+    void setPIDAngle(float P, float I, float D, float LPF);
+    void setPIDCurrentQ(float P, float I, float D, float LPF);
+    void setPIDCurrentD(float P, float I, float D, float LPF);
+
+    // 限制参数设置
+    void setVoltageLimit(float limit);
+    void setVelocityLimit(float limit);
+    void setCurrentLimit(float limit);
+
+    // 获取传感器数据
+    float getSensorAngle();
+    float getSensorVelocity();
+
+    // 获取电压数据
+    float getVoltageQ();
+    float getVoltageD();
+
+    // 获取电流设定值和限制
+    float getCurrentSP();
+    float getCurrentLimit();
+
+    // 控制权限管理
+    enum ControlSource {
+        CONTROL_NONE = 0,
+        CONTROL_WEB = 1,
+        CONTROL_SERIAL = 2
+    };
+
+    void setControlSource(ControlSource source);
+    ControlSource getControlSource();
+    bool checkControlPermission(ControlSource source);
+
     // 打印传感器信息
     void printSensorInfo();
 
@@ -49,6 +83,8 @@ public:
     float getCurrentA();
     float getCurrentB();
     float getCurrentC();
+    float getCurrentQ();
+    float getCurrentD();
     void printCurrentInfo();
 #endif
 
@@ -81,6 +117,9 @@ private:
     float target_angle;
     float target_torque;
     int control_mode;  // 0=velocity, 1=angle, 2=torque
+
+    // 控制权限
+    ControlSource current_control_source;
 };
 
 // 全局电机控制对象指针（在cpp中定义）

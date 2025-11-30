@@ -57,30 +57,30 @@
 
 // ==================== 控制参数 ====================
 // PID速度控制参数
-#define PID_VELOCITY_P      0.1f
-#define PID_VELOCITY_I      0.0f
+#define PID_VELOCITY_P      0.5f        // 比例系数（增大以提高响应）
+#define PID_VELOCITY_I      20.0f       // 积分系数（恢复积分作用）
 #define PID_VELOCITY_D      0.0f
-#define LPF_VELOCITY_TF     0.5f       // 速度低通滤波时间常数
+#define LPF_VELOCITY_TF     0.5f       // 速度低通滤波时间常数（减小以提高响应）
 
 // PID位置控制参数
-#define PID_ANGLE_P         0.2f
-#define PID_ANGLE_I         10.0f
+#define PID_ANGLE_P         1.0f       // 增大位置环P
+#define PID_ANGLE_I         0.0f        // 位置环通常不需要积分
 #define PID_ANGLE_D         0.0f
-#define LPF_ANGLE_TF        0.01f       // 位置低通滤波时间常数
+#define LPF_ANGLE_TF        0.5f       // 位置低通滤波时间常数
 
 // PID电流控制参数（FOC电流模式）
-#define PID_CURRENT_Q_P     0.1f
-#define PID_CURRENT_Q_I     0.0f
+#define PID_CURRENT_Q_P     1.0f        // Q轴电流P（增大）
+#define PID_CURRENT_Q_I     3.0f      // Q轴电流I（恢复强积分）
 #define PID_CURRENT_Q_D     0.0f
-#define PID_CURRENT_D_P     0.1f
-#define PID_CURRENT_D_I     0.0f
+#define PID_CURRENT_D_P     1.0f        // D轴电流P（增大）
+#define PID_CURRENT_D_I     3.0f      // D轴电流I（恢复强积分）
 #define PID_CURRENT_D_D     0.0f
-#define LPF_CURRENT_TF      0.005f      // 电流低通滤波时间常数
+#define LPF_CURRENT_TF      0.5f      // 电流低通滤波时间常数
 
 // 限制参数
 #define MOTOR_VOLTAGE_LIMIT     11.0f   // 电压限制 (V)
 #define MOTOR_VELOCITY_LIMIT    50.0f   // 速度限制 (rad/s)
-#define MOTOR_CURRENT_LIMIT     1.0f    // 电流限制 (A) 
+#define MOTOR_CURRENT_LIMIT     3.0f    // 电流限制 (A) - 增大到3A
 
 // ==================== Web界面配置 ====================
 #define WEB_REFRESH_INTERVAL    10000   // 网页自动刷新间隔 (ms)
