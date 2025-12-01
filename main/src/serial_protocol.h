@@ -50,6 +50,10 @@ private:
     void handleGetPID(char* params);
     void handleGetLimit(char* params);
     
+    // 发送PID参数
+    void sendPIDParams(const char* type, PIDController* pid, LowPassFilter* lpf);
+    void sendAllPIDParams();
+
     // 发送ACK
     void sendAck(const char* cmd, const char* status);
     void sendAckOK(const char* cmd);

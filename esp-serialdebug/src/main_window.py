@@ -229,6 +229,10 @@ class MainWindow(QMainWindow):
         # 参数同步
         self.control_panel.sync_widget.sync_enabled_changed.connect(self._on_sync_enabled_changed)
         self.control_panel.sync_widget.sync_interval_changed.connect(self._on_sync_interval_changed)
+
+        # 速度限制改变时更新目标速度范围
+        self.control_panel.limit_widget.velocity_limit_changed.connect(
+            self.control_panel.mode_widget.set_velocity_limit)
     
     def _init_menu(self):
         """初始化菜单栏"""
@@ -413,7 +417,10 @@ class MainWindow(QMainWindow):
             # 应用限制参数
             lim = self.user_config.get('limits', {})
             self.control_panel.limit_widget.volt_spin.setValue(lim.get('voltage', 11.0))
-            self.control_panel.limit_widget.vel_spin.setValue(lim.get('velocity', 50.0))
+            vel_limit = lim.get('velocity', 50.0)
+            self.control_panel.limit_widget.vel_spin.setValue(vel_limit)
+            # 更新目标速度范围
+            self.control_panel.mode_widget.set_velocity_limit(vel_limit)
             self.control_panel.limit_widget.curr_spin.setValue(lim.get('current', 3.0))
 
             # 应用同步设置
@@ -453,7 +460,10 @@ class MainWindow(QMainWindow):
             if 'limits' in config:
                 lim = config['limits']
                 self.control_panel.limit_widget.volt_spin.setValue(lim.get('volt', 11.0))
-                self.control_panel.limit_widget.vel_spin.setValue(lim.get('vel', 50.0))
+                vel_limit = lim.get('vel', 50.0)
+                self.control_panel.limit_widget.vel_spin.setValue(vel_limit)
+                # 更新目标速度范围
+                self.control_panel.mode_widget.set_velocity_limit(vel_limit)
                 self.control_panel.limit_widget.curr_spin.setValue(lim.get('curr', 3.0))
 
             # 加载同步设置
@@ -538,6 +548,9 @@ class MainWindow(QMainWindow):
         if success_count == len(commands):
             self.log_widget.append_log(f"参数同步完成 ({success_count}/{len(commands)})", "green")
             self.control_panel.set_sync_status("同步成功", "green")
+
+            # 同步后验证参数
+            self._verify_params_after_sync(params)
         else:
             self.log_widget.append_log(f"参数同步部分失败 ({success_count}/{len(commands)})", "orange")
             self.control_panel.set_sync_status("部分失败", "orange")
@@ -548,6 +561,172 @@ class MainWindow(QMainWindow):
         loop = QEventLoop()
         QTimer.singleShot(ms, loop.quit)
         loop.exec_()
+
+    def _verify_params_after_sync(self, expected_params: dict):
+        """同步后验证所有参数"""
+        # 等待一段时间让下位机处理完命令
+        self.msleep(200)
+
+        # 临时存储验证状态
+        self._verify_expected_params = expected_params
+        self._verify_received_pids = {}
+        self._verify_received_limits = None
+
+        # 连接PID和LIMIT信号
+        self.protocol_parser.pid_received.connect(self._on_pid_data_for_verify)
+        self.protocol_parser.limit_received.connect(self._on_limit_data_for_verify)
+
+        # 设置超时定时器
+        self._verify_timeout_timer = QTimer(self)
+        self._verify_timeout_timer.setSingleShot(True)
+        self._verify_timeout_timer.timeout.connect(self._on_verify_timeout)
+        self._verify_timeout_timer.start(3000)  # 3秒超时
+
+        self.log_widget.append_log("正在查询下位机参数...", "blue")
+
+        # 发送查询命令
+        self.serial_manager.send("GET_LIMIT,")
+        self.msleep(50)
+        # 注意：GET_PID不带参数会返回所有PID参数（4条）
+        # 为了简化，我们分别查询
+        self.serial_manager.send("GET_PID,VEL")
+        self.msleep(50)
+        self.serial_manager.send("GET_PID,ANG")
+        self.msleep(50)
+        self.serial_manager.send("GET_PID,IQ")
+        self.msleep(50)
+        self.serial_manager.send("GET_PID,ID")
+
+    def _on_pid_data_for_verify(self, pid_data):
+        """接收到PID数据，用于验证"""
+        # 存储接收到的PID数据
+        self._verify_received_pids[pid_data.type] = pid_data
+
+        # 检查是否收集完所有数据
+        self._check_verify_complete()
+
+    def _on_limit_data_for_verify(self, limit_data):
+        """接收到LIMIT数据，用于验证"""
+        # 存储接收到的LIMIT数据
+        self._verify_received_limits = limit_data
+
+        # 检查是否收集完所有数据
+        self._check_verify_complete()
+
+    def _check_verify_complete(self):
+        """检查是否收集完所有验证数据"""
+        # 需要收集：4个PID + 1个LIMIT
+        if len(self._verify_received_pids) >= 4 and self._verify_received_limits is not None:
+            # 停止超时定时器
+            if hasattr(self, '_verify_timeout_timer'):
+                self._verify_timeout_timer.stop()
+
+            # 断开临时连接
+            try:
+                self.protocol_parser.pid_received.disconnect(self._on_pid_data_for_verify)
+                self.protocol_parser.limit_received.disconnect(self._on_limit_data_for_verify)
+            except:
+                pass
+
+            # 显示验证结果
+            self._show_verify_results()
+
+    def _show_verify_results(self):
+        """显示验证结果"""
+        expected = getattr(self, '_verify_expected_params', {})
+        received_pids = getattr(self, '_verify_received_pids', {})
+        received_limits = getattr(self, '_verify_received_limits', None)
+
+        self.log_widget.append_log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "blue")
+        self.log_widget.append_log("📊 参数验证结果：", "blue")
+        self.log_widget.append_log("", "blue")
+
+        # 验证PID参数
+        self.log_widget.append_log("🔧 PID参数：", "blue")
+
+        pid_types = [
+            ('VEL', '速度环', 'pid_vel'),
+            ('ANG', '位置环', 'pid_ang'),
+            ('IQ', 'Q轴电流环', 'pid_iq'),
+            ('ID', 'D轴电流环', 'pid_id')
+        ]
+
+        for pid_type, name, key in pid_types:
+            if pid_type in received_pids:
+                exp = expected.get(key, {})
+                act = received_pids[pid_type]
+
+                p_match = abs(exp.get('p', 0) - act.p) < 0.001
+                i_match = abs(exp.get('i', 0) - act.i) < 0.001
+                d_match = abs(exp.get('d', 0) - act.d) < 0.001
+                lpf_match = abs(exp.get('lpf', 0) - act.ramp) < 0.001
+
+                all_match = p_match and i_match and d_match and lpf_match
+                status = "✅" if all_match else "❌"
+                color = "green" if all_match else "red"
+
+                self.log_widget.append_log(f"  {name} {status}", color)
+                if not all_match:
+                    if not p_match:
+                        self.log_widget.append_log(f"    P: 设置={exp.get('p', 0):.6f}, 实际={act.p:.6f}", "red")
+                    if not i_match:
+                        self.log_widget.append_log(f"    I: 设置={exp.get('i', 0):.6f}, 实际={act.i:.6f}", "red")
+                    if not d_match:
+                        self.log_widget.append_log(f"    D: 设置={exp.get('d', 0):.6f}, 实际={act.d:.6f}", "red")
+                    if not lpf_match:
+                        self.log_widget.append_log(f"    LPF: 设置={exp.get('lpf', 0):.6f}, 实际={act.ramp:.6f}", "red")
+            else:
+                self.log_widget.append_log(f"  {name} ⚠️ 未收到数据", "orange")
+
+        self.log_widget.append_log("", "blue")
+
+        # 验证限制参数
+        self.log_widget.append_log("⚙️ 限制参数：", "blue")
+
+        if received_limits:
+            exp_lim = expected.get('limits', {})
+
+            volt_match = abs(exp_lim.get('volt', 0) - received_limits.volt) < 0.01
+            vel_match = abs(exp_lim.get('vel', 0) - received_limits.vel) < 0.01
+            curr_match = abs(exp_lim.get('curr', 0) - received_limits.curr) < 0.01
+
+            self.log_widget.append_log(
+                f"  电压限制: 设置={exp_lim.get('volt', 0):.2f}V, 实际={received_limits.volt:.2f}V {'✅' if volt_match else '❌'}",
+                "green" if volt_match else "red"
+            )
+            self.log_widget.append_log(
+                f"  速度限制: 设置={exp_lim.get('vel', 0):.2f}rad/s, 实际={received_limits.vel:.2f}rad/s {'✅' if vel_match else '❌'}",
+                "green" if vel_match else "red"
+            )
+            self.log_widget.append_log(
+                f"  电流限制: 设置={exp_lim.get('curr', 0):.3f}A, 实际={received_limits.curr:.3f}A {'✅' if curr_match else '❌'}",
+                "green" if curr_match else "red"
+            )
+        else:
+            self.log_widget.append_log("  ⚠️ 未收到限制参数数据", "orange")
+
+        self.log_widget.append_log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "blue")
+
+    def _on_verify_timeout(self):
+        """验证超时"""
+        # 断开临时连接
+        try:
+            self.protocol_parser.pid_received.disconnect(self._on_pid_data_for_verify)
+            self.protocol_parser.limit_received.disconnect(self._on_limit_data_for_verify)
+        except:
+            pass
+
+        received_pids = getattr(self, '_verify_received_pids', {})
+        received_limits = getattr(self, '_verify_received_limits', None)
+
+        self.log_widget.append_log("⚠️ 验证超时：3秒内未收到完整数据", "orange")
+        self.log_widget.append_log(f"  已收到PID数据: {len(received_pids)}/4", "orange")
+        self.log_widget.append_log(f"  已收到LIMIT数据: {'是' if received_limits else '否'}", "orange")
+        self.log_widget.append_log("💡 可能原因：下位机未响应GET命令或串口通信异常", "orange")
+
+        # 如果收到部分数据，也显示验证结果
+        if len(received_pids) > 0 or received_limits is not None:
+            self._show_verify_results()
 
     def _on_sync_enabled_changed(self, enabled: bool):
         """自动同步开关状态改变"""

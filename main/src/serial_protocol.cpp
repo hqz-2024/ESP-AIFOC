@@ -3,15 +3,15 @@
 
 #define AS5600_I2C_ADDRESS 0x36
 
-SerialProtocol::SerialProtocol(MotorControl* mc) 
-    : motorControl(mc), cmdIndex(0), streamEnabled(true), 
-      streamInterval(100), lastStreamTime(0) {
+SerialProtocol::SerialProtocol(MotorControl* mc)
+    : motorControl(mc), cmdIndex(0), streamEnabled(true),
+      streamInterval(SERIAL_STREAM_INTERVAL), lastStreamTime(0) {
 }
 
 void SerialProtocol::begin() {
     cmdIndex = 0;
     streamEnabled = true;
-    streamInterval = 100;  // 默认100ms发送一次
+    streamInterval = SERIAL_STREAM_INTERVAL;  // 使用配置的间隔时间
     lastStreamTime = 0;
 }
 
@@ -247,14 +247,148 @@ void SerialProtocol::handleStream(char* params) {
 
 // 查询PID参数
 void SerialProtocol::handleGetPID(char* params) {
-    // 实现查询功能（可选）
-    sendAckError("GET_PID", "NOT_IMPLEMENTED");
+    char* ptr = params;
+    char* type = nextToken(&ptr, ',');
+
+    if (!type) {
+        // 如果没有指定类型，返回所有PID参数
+        sendAllPIDParams();
+        return;
+    }
+
+    // 返回指定类型的PID参数
+    if (strcmp(type, "VEL") == 0) {
+        sendPIDParams("VEL", motorControl->getVelocityPID(), motorControl->getVelocityLPF());
+    }
+    else if (strcmp(type, "ANG") == 0) {
+        sendPIDParams("ANG", motorControl->getAnglePID(), motorControl->getAngleLPF());
+    }
+    else if (strcmp(type, "IQ") == 0) {
+        sendPIDParams("IQ", motorControl->getCurrentQPID(), motorControl->getCurrentQLPF());
+    }
+    else if (strcmp(type, "ID") == 0) {
+        sendPIDParams("ID", motorControl->getCurrentDPID(), motorControl->getCurrentDLPF());
+    }
+    else {
+        sendAckError("GET_PID", "INVALID_TYPE");
+    }
 }
 
 // 查询限制参数
 void SerialProtocol::handleGetLimit(char* params) {
-    // 实现查询功能（可选）
-    sendAckError("GET_LIMIT", "NOT_IMPLEMENTED");
+    char* ptr = params;
+    char* type = nextToken(&ptr, ',');
+
+    // 如果没有指定类型或者类型为空字符串，返回所有限制参数
+    if (!type || strlen(type) == 0) {
+        Serial.print("LIMIT,VOLT,");
+        Serial.print(motorControl->getVoltageLimit(), 3);
+        Serial.print(",VEL,");
+        Serial.print(motorControl->getVelocityLimit(), 3);
+        Serial.print(",CURR,");
+        Serial.println(motorControl->getCurrentLimit(), 3);
+        return;
+    }
+
+    // 返回指定类型的限制参数
+    if (strcmp(type, "VOLT") == 0) {
+        Serial.print("LIMIT,VOLT,");
+        Serial.println(motorControl->getVoltageLimit(), 3);
+    }
+    else if (strcmp(type, "VEL") == 0) {
+        Serial.print("LIMIT,VEL,");
+        Serial.println(motorControl->getVelocityLimit(), 3);
+    }
+    else if (strcmp(type, "CURR") == 0) {
+        Serial.print("LIMIT,CURR,");
+        Serial.println(motorControl->getCurrentLimit(), 3);
+    }
+    else {
+        sendAckError("GET_LIMIT", "INVALID_TYPE");
+    }
+}
+
+// 发送PID参数（单个）
+void SerialProtocol::sendPIDParams(const char* type, PIDController* pid, LowPassFilter* lpf) {
+    if (!pid) {
+        sendAckError("GET_PID", "NULL_PID");
+        return;
+    }
+
+    Serial.print("PID,");
+    Serial.print(type);
+    Serial.print(",");
+    Serial.print(pid->P, 6);
+    Serial.print(",");
+    Serial.print(pid->I, 6);
+    Serial.print(",");
+    Serial.print(pid->D, 6);
+    Serial.print(",");
+    // 返回LPF的Tf参数，而不是PID的output_ramp
+    if (lpf) {
+        Serial.println(lpf->Tf, 6);
+    } else {
+        Serial.println(0.0, 6);
+    }
+}
+
+// 发送所有PID参数
+void SerialProtocol::sendAllPIDParams() {
+    // 速度环PID
+    PIDController* vel_pid = motorControl->getVelocityPID();
+    LowPassFilter* vel_lpf = motorControl->getVelocityLPF();
+    if (vel_pid) {
+        Serial.print("PID,VEL,");
+        Serial.print(vel_pid->P, 6);
+        Serial.print(",");
+        Serial.print(vel_pid->I, 6);
+        Serial.print(",");
+        Serial.print(vel_pid->D, 6);
+        Serial.print(",");
+        Serial.println(vel_lpf ? vel_lpf->Tf : 0.0, 6);
+    }
+
+    // 位置环PID
+    PIDController* ang_pid = motorControl->getAnglePID();
+    LowPassFilter* ang_lpf = motorControl->getAngleLPF();
+    if (ang_pid) {
+        Serial.print("PID,ANG,");
+        Serial.print(ang_pid->P, 6);
+        Serial.print(",");
+        Serial.print(ang_pid->I, 6);
+        Serial.print(",");
+        Serial.print(ang_pid->D, 6);
+        Serial.print(",");
+        Serial.println(ang_lpf ? ang_lpf->Tf : 0.0, 6);
+    }
+
+    // Q轴电流环PID
+    PIDController* iq_pid = motorControl->getCurrentQPID();
+    LowPassFilter* iq_lpf = motorControl->getCurrentQLPF();
+    if (iq_pid) {
+        Serial.print("PID,IQ,");
+        Serial.print(iq_pid->P, 6);
+        Serial.print(",");
+        Serial.print(iq_pid->I, 6);
+        Serial.print(",");
+        Serial.print(iq_pid->D, 6);
+        Serial.print(",");
+        Serial.println(iq_lpf ? iq_lpf->Tf : 0.0, 6);
+    }
+
+    // D轴电流环PID
+    PIDController* id_pid = motorControl->getCurrentDPID();
+    LowPassFilter* id_lpf = motorControl->getCurrentDLPF();
+    if (id_pid) {
+        Serial.print("PID,ID,");
+        Serial.print(id_pid->P, 6);
+        Serial.print(",");
+        Serial.print(id_pid->I, 6);
+        Serial.print(",");
+        Serial.print(id_pid->D, 6);
+        Serial.print(",");
+        Serial.println(id_lpf ? id_lpf->Tf : 0.0, 6);
+    }
 }
 
 // 发送ACK

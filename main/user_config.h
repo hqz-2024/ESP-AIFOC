@@ -9,6 +9,13 @@
 // ==================== 串口配置 ====================
 #define SERIAL_BAUDRATE     115200
 
+// 调试日志开关（禁用可提高FOC性能）
+#define ENABLE_DEBUG_LOG    1           // 0=禁用调试日志, 1=启用调试日志
+#define ENABLE_INIT_LOG     1           // 0=禁用初始化日志, 1=启用初始化日志
+
+// 串口数据流设置
+#define SERIAL_STREAM_INTERVAL  100     // 数据流发送间隔（毫秒）
+
 // ==================== 传感器配置 ====================
 // 传感器类型选择：0=编码器(Encoder), 1=AS5600磁传感器(I2C)
 #define SENSOR_TYPE         1
@@ -43,7 +50,10 @@
 #define CURRENT_SENSE_A     3           // A相电流检测引脚（ADC）
 #define CURRENT_SENSE_B     4           // B相电流检测引脚（ADC）
 #define CURRENT_SENSE_SHUNT_R   0.01f   // 采样电阻阻值（欧姆）
-#define CURRENT_SENSE_AMP_GAIN  20.0f   // 运放增益
+#define CURRENT_SENSE_AMP_GAIN  50.0f   // 运放增益（常见值：20, 50, 100）
+// ⚠️ 重要：如果电流读数异常，请检查实际硬件的运放增益！
+// 测试方法：堵转电机，观察电流是否达到current_limit
+// 如果实际电流 = current_limit × (配置增益/实际增益)，说明增益配置错误
 
 // 低侧电流传感器配置（CURRENT_SENSE_TYPE=2）
 // 注意：SimpleFOC支持2相电流检测（A和B相），C相可以通过计算得出（Ic = -Ia - Ib）
@@ -70,17 +80,17 @@
 
 // PID电流控制参数（FOC电流模式）
 #define PID_CURRENT_Q_P     1.0f        // Q轴电流P（增大）
-#define PID_CURRENT_Q_I     3.0f      // Q轴电流I（恢复强积分）
+#define PID_CURRENT_Q_I     0.0f      // Q轴电流I（恢复强积分）
 #define PID_CURRENT_Q_D     0.0f
 #define PID_CURRENT_D_P     1.0f        // D轴电流P（增大）
-#define PID_CURRENT_D_I     3.0f      // D轴电流I（恢复强积分）
+#define PID_CURRENT_D_I     0.0f      // D轴电流I（恢复强积分）
 #define PID_CURRENT_D_D     0.0f
-#define LPF_CURRENT_TF      0.5f      // 电流低通滤波时间常数
+#define LPF_CURRENT_TF      0.1f      // 电流低通滤波时间常数
 
 // 限制参数
-#define MOTOR_VOLTAGE_LIMIT     11.0f   // 电压限制 (V)
-#define MOTOR_VELOCITY_LIMIT    50.0f   // 速度限制 (rad/s)
-#define MOTOR_CURRENT_LIMIT     3.0f    // 电流限制 (A) - 增大到3A
+#define MOTOR_VOLTAGE_LIMIT     12.0f   // 电压限制 (V)
+#define MOTOR_VELOCITY_LIMIT    60.0f   // 速度限制 (rad/s)
+#define MOTOR_CURRENT_LIMIT     5.0f    // 电流限制 (A) - 增大到3A
 
 // ==================== Web界面配置 ====================
 #define WEB_REFRESH_INTERVAL    10000   // 网页自动刷新间隔 (ms)

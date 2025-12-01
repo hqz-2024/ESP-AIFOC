@@ -52,12 +52,32 @@ class AckData:
     error_code: str = ""    # 错误码（如果失败）
 
 
+@dataclass
+class PIDData:
+    """PID参数数据"""
+    type: str = ""          # PID类型（VEL/ANG/IQ/ID）
+    p: float = 0.0          # P参数
+    i: float = 0.0          # I参数
+    d: float = 0.0          # D参数
+    ramp: float = 0.0       # 输出斜坡
+
+
+@dataclass
+class LimitData:
+    """限制参数数据"""
+    volt: float = 0.0       # 电压限制（V）
+    vel: float = 0.0        # 速度限制（rad/s）
+    curr: float = 0.0       # 电流限制（A）
+
+
 class ProtocolParser(QObject):
     """协议解析器"""
     sensor_received = pyqtSignal(object)   # 接收到传感器数据
     motor_received = pyqtSignal(object)    # 接收到电机数据
     current_received = pyqtSignal(object)  # 接收到电流数据
     ack_received = pyqtSignal(object)      # 接收到ACK响应
+    pid_received = pyqtSignal(object)      # 接收到PID参数
+    limit_received = pyqtSignal(object)    # 接收到限制参数
     raw_data = pyqtSignal(str)             # 原始数据（用于日志显示）
     parse_error = pyqtSignal(str)          # 解析错误
 
@@ -86,6 +106,10 @@ class ProtocolParser(QObject):
                 self._parse_current(parts[1:])
             elif msg_type == 'ACK':
                 self._parse_ack(parts[1:])
+            elif msg_type == 'PID':
+                self._parse_pid(parts[1:])
+            elif msg_type == 'LIMIT':
+                self._parse_limit(parts[1:])
             # 其他类型暂时忽略
         except Exception as e:
             self.parse_error.emit(f"解析错误: {line} - {str(e)}")
@@ -155,12 +179,12 @@ class ProtocolParser(QObject):
         """解析ACK响应"""
         if len(fields) < 2:
             return
-        
+
         try:
             cmd = fields[0].strip()
             status = fields[1].strip().upper()
             error_code = fields[2].strip() if len(fields) > 2 else ""
-            
+
             data = AckData(
                 command=cmd,
                 success=(status == "OK"),
@@ -169,4 +193,49 @@ class ProtocolParser(QObject):
             self.ack_received.emit(data)
         except Exception as e:
             self.parse_error.emit(f"ACK解析失败: {str(e)}")
+
+    def _parse_pid(self, fields: list):
+        """解析PID参数帧"""
+        if len(fields) < 5:
+            self.parse_error.emit(f"PID帧字段不足: {len(fields)}")
+            return
+
+        try:
+            data = PIDData(
+                type=fields[0].strip(),
+                p=float(fields[1]),
+                i=float(fields[2]),
+                d=float(fields[3]),
+                ramp=float(fields[4])
+            )
+            self.pid_received.emit(data)
+        except (ValueError, IndexError) as e:
+            self.parse_error.emit(f"PID解析失败: {str(e)}")
+
+    def _parse_limit(self, fields: list):
+        """解析限制参数帧"""
+        try:
+            # 支持两种格式：
+            # 1. LIMIT,VOLT,12.0 (单个参数)
+            # 2. LIMIT,VOLT,12.0,VEL,50.0,CURR,3.0 (所有参数)
+
+            data = LimitData()
+
+            i = 0
+            while i < len(fields) - 1:
+                param_type = fields[i].strip()
+                param_value = float(fields[i + 1])
+
+                if param_type == "VOLT":
+                    data.volt = param_value
+                elif param_type == "VEL":
+                    data.vel = param_value
+                elif param_type == "CURR":
+                    data.curr = param_value
+
+                i += 2
+
+            self.limit_received.emit(data)
+        except (ValueError, IndexError) as e:
+            self.parse_error.emit(f"LIMIT解析失败: {str(e)}")
 

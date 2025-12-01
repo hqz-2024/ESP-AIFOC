@@ -47,10 +47,26 @@ public:
     void setPIDCurrentQ(float P, float I, float D, float LPF);
     void setPIDCurrentD(float P, float I, float D, float LPF);
 
+    // 获取PID控制器
+    PIDController* getVelocityPID();
+    PIDController* getAnglePID();
+    PIDController* getCurrentQPID();
+    PIDController* getCurrentDPID();
+
+    // 获取LPF滤波器
+    LowPassFilter* getVelocityLPF();
+    LowPassFilter* getAngleLPF();
+    LowPassFilter* getCurrentQLPF();
+    LowPassFilter* getCurrentDLPF();
+
     // 限制参数设置
     void setVoltageLimit(float limit);
     void setVelocityLimit(float limit);
     void setCurrentLimit(float limit);
+
+    // 获取限制参数
+    float getVoltageLimit();
+    float getVelocityLimit();
 
     // 获取传感器数据
     float getSensorAngle();

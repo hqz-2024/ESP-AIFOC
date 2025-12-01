@@ -75,19 +75,21 @@ class ModeControlWidget(QGroupBox):
     """控制模式设置组件"""
     mode_changed = pyqtSignal(str)      # 模式改变信号
     target_changed = pyqtSignal(float)  # 目标值改变信号
-    
+
     def __init__(self, parent=None):
         super().__init__("控制模式", parent)
+        self._velocity_limit = 50.0  # 默认速度限制
         self._init_ui()
-    
+
     def _init_ui(self):
         layout = QFormLayout(self)
-        
+
         # 模式选择
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(['VEL (速度)', 'POS (位置)', 'CURR (电流)'])
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         layout.addRow("模式:", self.mode_combo)
-        
+
         # 目标值
         target_layout = QHBoxLayout()
         self.target_spin = QDoubleSpinBox()
@@ -99,21 +101,48 @@ class ModeControlWidget(QGroupBox):
         target_layout.addWidget(self.target_spin)
         target_layout.addWidget(self.target_apply_btn)
         layout.addRow("目标值:", target_layout)
-        
+
         # 模式应用
         self.mode_apply_btn = QPushButton("设置模式")
         self.mode_apply_btn.clicked.connect(self._on_mode_apply)
         layout.addRow(self.mode_apply_btn)
-    
+
     def _on_mode_apply(self):
         """应用模式"""
         mode_text = self.mode_combo.currentText()
         mode = mode_text.split()[0]  # 提取 VEL/POS/CURR
         self.mode_changed.emit(mode)
-    
+
     def _on_target_apply(self):
         """应用目标值"""
         self.target_changed.emit(self.target_spin.value())
+
+    def _on_mode_changed(self):
+        """模式改变时更新目标值范围"""
+        self._update_target_range()
+
+    def set_velocity_limit(self, limit: float):
+        """设置速度限制，并更新目标速度范围"""
+        self._velocity_limit = limit
+        self._update_target_range()
+
+    def _update_target_range(self):
+        """根据当前模式和限制参数更新目标值范围"""
+        mode_text = self.mode_combo.currentText()
+        mode = mode_text.split()[0]
+
+        if mode == "VEL":
+            # 速度模式：范围为 [-velocity_limit, velocity_limit]
+            self.target_spin.setRange(-self._velocity_limit, self._velocity_limit)
+            self.target_spin.setSuffix(" rad/s")
+        elif mode == "POS":
+            # 位置模式：范围不受限制
+            self.target_spin.setRange(-1000, 1000)
+            self.target_spin.setSuffix(" rad")
+        elif mode == "CURR":
+            # 电流模式：范围不受限制（电流限制在下位机处理）
+            self.target_spin.setRange(-50, 50)
+            self.target_spin.setSuffix(" A")
 
 
 class PIDWidget(QGroupBox):
@@ -182,6 +211,7 @@ class PIDWidget(QGroupBox):
 class LimitWidget(QGroupBox):
     """限制参数设置组件"""
     limit_changed = pyqtSignal(str, float)  # type, value
+    velocity_limit_changed = pyqtSignal(float)  # 速度限制改变信号（用于更新目标速度范围）
 
     def __init__(self, parent=None):
         super().__init__("限制参数", parent)
@@ -211,7 +241,7 @@ class LimitWidget(QGroupBox):
         self.vel_spin.setValue(50.0)
         self.vel_spin.setSuffix(" rad/s")
         vel_btn = QPushButton("应用")
-        vel_btn.clicked.connect(lambda: self.limit_changed.emit("VEL", self.vel_spin.value()))
+        vel_btn.clicked.connect(self._on_velocity_limit_apply)
         vel_layout.addWidget(self.vel_spin)
         vel_layout.addWidget(vel_btn)
         layout.addRow("速度:", vel_layout)
@@ -228,6 +258,12 @@ class LimitWidget(QGroupBox):
         curr_layout.addWidget(self.curr_spin)
         curr_layout.addWidget(curr_btn)
         layout.addRow("电流:", curr_layout)
+
+    def _on_velocity_limit_apply(self):
+        """速度限制应用"""
+        value = self.vel_spin.value()
+        self.limit_changed.emit("VEL", value)
+        self.velocity_limit_changed.emit(value)  # 发出速度限制改变信号
 
 
 class SyncWidget(QGroupBox):

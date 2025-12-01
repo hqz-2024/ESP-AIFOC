@@ -24,9 +24,9 @@
     "lpf": 0.1
   },
   "limits": {
-    "volt": 11.0,
-    "vel": 50.0,
-    "curr": 3.0
+    "volt": 12.0,
+    "vel": 20.0,
+    "curr": 5.0
   },
   "sync": {
     "enabled": true,

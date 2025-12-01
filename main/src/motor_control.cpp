@@ -1,5 +1,22 @@
 #include "motor_control.h"
 
+// 调试日志宏
+#if ENABLE_DEBUG_LOG
+    #define DEBUG_PRINT(x) Serial.print(x)
+    #define DEBUG_PRINTLN(x) Serial.println(x)
+#else
+    #define DEBUG_PRINT(x)
+    #define DEBUG_PRINTLN(x)
+#endif
+
+#if ENABLE_INIT_LOG
+    #define INIT_PRINT(x) Serial.print(x)
+    #define INIT_PRINTLN(x) Serial.println(x)
+#else
+    #define INIT_PRINT(x)
+    #define INIT_PRINTLN(x)
+#endif
+
 // 全局电机控制对象指针
 MotorControl* g_motorControl = nullptr;
 
@@ -46,20 +63,20 @@ MotorControl::MotorControl()
 
 // 初始化电机系统
 bool MotorControl::init() {
-    Serial.println("Initializing motor control...");
+    INIT_PRINTLN("Initializing motor control...");
 
     // 初始化传感器
 #if SENSOR_TYPE == 0
     // 编码器传感器
-    Serial.println("Initializing Encoder sensor...");
+    INIT_PRINTLN("Initializing Encoder sensor...");
     encoder.init();
     encoder.enableInterrupts(doEncoderA, doEncoderB);
     motor.linkSensor(&encoder);
-    Serial.println("Encoder initialized");
+    INIT_PRINTLN("Encoder initialized");
 
 #elif SENSOR_TYPE == 1
     // AS5600磁传感器（I2C）
-    Serial.println("Initializing AS5600 magnetic sensor (I2C)...");
+    INIT_PRINTLN("Initializing AS5600 magnetic sensor (I2C)...");
 
     // 初始化I2C总线（ESP32需要指定引脚）
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
@@ -68,29 +85,29 @@ bool MotorControl::init() {
     // 初始化传感器
     sensor.init(&Wire);
     motor.linkSensor(&sensor);
-    Serial.println("AS5600 initialized");
+    INIT_PRINTLN("AS5600 initialized");
 #endif
 
     // 初始化驱动器
     driver.voltage_power_supply = DRIVER_VOLTAGE;
     driver.pwm_frequency = DRIVER_PWM_FREQ;
     if (!driver.init()) {
-        Serial.println("Driver init failed!");
+        INIT_PRINTLN("Driver init failed!");
         return false;
     }
     motor.linkDriver(&driver);
-    Serial.println("Driver initialized");
+    INIT_PRINTLN("Driver initialized");
 
 #if CURRENT_SENSE_TYPE > 0
     // 初始化电流传感器
     // 重要：必须先链接驱动器，电流传感器初始化时需要使用驱动器进行校准
-    Serial.println("Initializing current sense...");
+    INIT_PRINTLN("Initializing current sense...");
     current_sense.linkDriver(&driver);  // ← 先链接驱动器！
     if (current_sense.init()) {
         motor.linkCurrentSense(&current_sense);
-        Serial.println("Current sense initialized");
+        INIT_PRINTLN("Current sense initialized");
     } else {
-        Serial.println("WARNING: Current sense init failed!");
+        INIT_PRINTLN("WARNING: Current sense init failed!");
     }
 #endif
 
@@ -98,30 +115,30 @@ bool MotorControl::init() {
     switch (control_mode) {
         case 0:  // 速度控制
             motor.controller = MotionControlType::velocity;
-            Serial.println("Control mode: Velocity");
+            INIT_PRINTLN("Control mode: Velocity");
             break;
         case 1:  // 位置控制
             motor.controller = MotionControlType::angle;
-            Serial.println("Control mode: Angle");
+            INIT_PRINTLN("Control mode: Angle");
             break;
         case 2:  // 扭矩控制
             motor.controller = MotionControlType::torque;
-            Serial.println("Control mode: Torque");
+            INIT_PRINTLN("Control mode: Torque");
             break;
         default:
             motor.controller = MotionControlType::velocity;
             control_mode = 0;
-            Serial.println("Control mode: Velocity (default)");
+            INIT_PRINTLN("Control mode: Velocity (default)");
             break;
     }
 
     // 配置扭矩控制类型
 #if CURRENT_SENSE_TYPE > 0
     motor.torque_controller = TorqueControlType::foc_current;  // FOC电流模式
-    Serial.println("Torque control: FOC Current");
+    INIT_PRINTLN("Torque control: FOC Current");
 #else
     motor.torque_controller = TorqueControlType::voltage;  // 电压模式
-    Serial.println("Torque control: Voltage");
+    INIT_PRINTLN("Torque control: Voltage");
 #endif
 
     // PID速度控制参数
@@ -159,10 +176,10 @@ bool MotorControl::init() {
     motor.init();
 
     // FOC初始化（对齐传感器）
-    Serial.println("Starting FOC initialization...");
+    INIT_PRINTLN("Starting FOC initialization...");
     motor.initFOC();
 
-    Serial.println("Motor control initialized successfully!");
+    INIT_PRINTLN("Motor control initialized successfully!");
     return true;
 }
 
@@ -213,18 +230,18 @@ void MotorControl::setTargetVelocity(float velocity) {
 
     target_velocity = velocity;
 
-    Serial.print("Target velocity set to: ");
-    Serial.print(target_velocity);
-    Serial.println(" rad/s");
+    DEBUG_PRINT("Target velocity set to: ");
+    DEBUG_PRINT(target_velocity);
+    DEBUG_PRINTLN(" rad/s");
 }
 
 // 设置目标角度
 void MotorControl::setTargetAngle(float angle) {
     target_angle = angle;
 
-    Serial.print("Target angle set to: ");
-    Serial.print(target_angle);
-    Serial.println(" rad");
+    DEBUG_PRINT("Target angle set to: ");
+    DEBUG_PRINT(target_angle);
+    DEBUG_PRINTLN(" rad");
 }
 
 // 设置目标扭矩
@@ -241,19 +258,19 @@ void MotorControl::setTargetTorque(float torque) {
 
     target_torque = torque;
 
-    Serial.print("Target torque set to: ");
-    Serial.print(target_torque);
+    DEBUG_PRINT("Target torque set to: ");
+    DEBUG_PRINT(target_torque);
 #if CURRENT_SENSE_TYPE > 0
-    Serial.println(" A");
+    DEBUG_PRINTLN(" A");
 #else
-    Serial.println(" V");
+    DEBUG_PRINTLN(" V");
 #endif
 }
 
 // 切换控制模式
 void MotorControl::setControlMode(int mode) {
     if (mode < 0 || mode > 2) {
-        Serial.println("Invalid control mode! Use 0=velocity, 1=angle, 2=torque");
+        DEBUG_PRINTLN("Invalid control mode! Use 0=velocity, 1=angle, 2=torque");
         return;
     }
 
@@ -262,15 +279,15 @@ void MotorControl::setControlMode(int mode) {
     switch (control_mode) {
         case 0:
             motor.controller = MotionControlType::velocity;
-            Serial.println("Control mode changed to: Velocity");
+            DEBUG_PRINTLN("Control mode changed to: Velocity");
             break;
         case 1:
             motor.controller = MotionControlType::angle;
-            Serial.println("Control mode changed to: Angle");
+            DEBUG_PRINTLN("Control mode changed to: Angle");
             break;
         case 2:
             motor.controller = MotionControlType::torque;
-            Serial.println("Control mode changed to: Torque");
+            DEBUG_PRINTLN("Control mode changed to: Torque");
             break;
     }
 }
@@ -368,19 +385,113 @@ void MotorControl::setPIDCurrentD(float P, float I, float D, float LPF) {
 #endif
 }
 
+// 获取PID控制器
+PIDController* MotorControl::getVelocityPID() {
+    return &motor.PID_velocity;
+}
+
+PIDController* MotorControl::getAnglePID() {
+    return &motor.P_angle;
+}
+
+PIDController* MotorControl::getCurrentQPID() {
+#if CURRENT_SENSE_TYPE > 0
+    return &motor.PID_current_q;
+#else
+    return nullptr;
+#endif
+}
+
+PIDController* MotorControl::getCurrentDPID() {
+#if CURRENT_SENSE_TYPE > 0
+    return &motor.PID_current_d;
+#else
+    return nullptr;
+#endif
+}
+
+// 获取LPF滤波器
+LowPassFilter* MotorControl::getVelocityLPF() {
+    return &motor.LPF_velocity;
+}
+
+LowPassFilter* MotorControl::getAngleLPF() {
+    return &motor.LPF_angle;
+}
+
+LowPassFilter* MotorControl::getCurrentQLPF() {
+#if CURRENT_SENSE_TYPE > 0
+    return &motor.LPF_current_q;
+#else
+    return nullptr;
+#endif
+}
+
+LowPassFilter* MotorControl::getCurrentDLPF() {
+#if CURRENT_SENSE_TYPE > 0
+    return &motor.LPF_current_d;
+#else
+    return nullptr;
+#endif
+}
+
 // 限制参数设置
 void MotorControl::setVoltageLimit(float limit) {
     motor.voltage_limit = limit;
+
+    // 同步更新PID控制器的limit参数（参考BLDCMotor::init()的逻辑）
+#if CURRENT_SENSE_TYPE > 0
+    // 电流环的limit = 电压限制
+    motor.PID_current_q.limit = limit;
+    motor.PID_current_d.limit = limit;
+    DEBUG_PRINT("Voltage limit set to: ");
+    DEBUG_PRINT(limit);
+    DEBUG_PRINT("V, PID_current_q/d.limit = ");
+    DEBUG_PRINTLN(limit);
+#endif
+
+    // 如果速度环控制电压（非电流模式），更新速度环limit
+    if (motor.torque_controller == TorqueControlType::voltage) {
+        motor.PID_velocity.limit = limit;
+        DEBUG_PRINT("PID_velocity.limit = ");
+        DEBUG_PRINTLN(limit);
+    }
 }
 
 void MotorControl::setVelocityLimit(float limit) {
     motor.velocity_limit = limit;
+
+    // 同步更新位置环的limit参数
+    motor.P_angle.limit = limit;
+
+    DEBUG_PRINT("Velocity limit set to: ");
+    DEBUG_PRINT(limit);
+    DEBUG_PRINT(" rad/s, P_angle.limit = ");
+    DEBUG_PRINTLN(limit);
 }
 
 void MotorControl::setCurrentLimit(float limit) {
 #if CURRENT_SENSE_TYPE > 0
     motor.current_limit = limit;
+
+    // 同步更新速度环的limit参数（FOC电流模式下，速度环控制电流）
+    if (motor.torque_controller == TorqueControlType::foc_current) {
+        motor.PID_velocity.limit = limit;
+        DEBUG_PRINT("Current limit set to: ");
+        DEBUG_PRINT(limit);
+        DEBUG_PRINT("A, PID_velocity.limit = ");
+        DEBUG_PRINTLN(limit);
+    }
 #endif
+}
+
+// 获取限制参数
+float MotorControl::getVoltageLimit() {
+    return motor.voltage_limit;
+}
+
+float MotorControl::getVelocityLimit() {
+    return motor.velocity_limit;
 }
 
 // 获取传感器数据
