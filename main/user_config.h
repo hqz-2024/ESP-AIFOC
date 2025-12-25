@@ -10,7 +10,7 @@
 #define SERIAL_BAUDRATE     115200
 
 // 调试日志开关（禁用可提高FOC性能）
-#define ENABLE_DEBUG_LOG    1           // 0=禁用调试日志, 1=启用调试日志
+#define ENABLE_DEBUG_LOG    0           // 0=禁用调试日志, 1=启用调试日志
 #define ENABLE_INIT_LOG     1           // 0=禁用初始化日志, 1=启用初始化日志
 
 // 串口数据流设置
@@ -28,13 +28,13 @@
 // AS5600配置（仅当SENSOR_TYPE=1时使用）
 #define AS5600_I2C_ADDRESS  0x36        // AS5600默认I2C地址
 #define I2C_SDA_PIN         8          // ESP32 I2C SDA引脚
-#define I2C_SCL_PIN         9          // ESP32 I2C SCL引脚
+#define I2C_SCL_PIN         10          // ESP32 I2C SCL引脚
 
 // ==================== 驱动器配置 ====================
 #define DRIVER_PWM_A        5
 #define DRIVER_PWM_B        6
 #define DRIVER_PWM_C        7
-#define DRIVER_ENABLE       10
+#define DRIVER_ENABLE       9
 #define DRIVER_VOLTAGE      11.0f       // 电源电压 (V)
 #define DRIVER_PWM_FREQ     20000       // PWM频率 (Hz)
 
