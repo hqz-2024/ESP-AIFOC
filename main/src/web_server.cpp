@@ -48,6 +48,12 @@ void WebServerManager::handleSetControlStatic() {
     }
 }
 
+void WebServerManager::handleSetVibrationStatic() {
+    if (instance) {
+        instance->handleSetVibration();
+    }
+}
+
 // 初始化Web服务器
 void WebServerManager::begin() {
     server.on("/", handleRootStatic);
@@ -56,6 +62,7 @@ void WebServerManager::begin() {
     server.on("/settorque", handleSetTorqueStatic);
     server.on("/setmode", handleSetModeStatic);
     server.on("/setcontrol", handleSetControlStatic);  // 统一控制接口
+    server.on("/setvibration", handleSetVibrationStatic);  // 震动模式设置
     server.begin();
     Serial.println("Web server started!");
 }
@@ -68,7 +75,7 @@ void WebServerManager::handleClient() {
 // 主页处理
 void WebServerManager::handleRoot() {
     int mode = motorControl->getControlMode();
-    String modeNames[] = {"速度控制", "位置控制", "扭矩控制"};
+    String modeNames[] = {"速度控制", "位置控制", "扭矩控制", "震动模式"};
 
     String html = "<!DOCTYPE html><html><head>";
     html += "<meta charset='UTF-8'>";
@@ -141,6 +148,7 @@ void WebServerManager::handleRoot() {
     html += "<option value='0'" + String(mode == 0 ? " selected" : "") + ">速度控制 (Velocity)</option>";
     html += "<option value='1'" + String(mode == 1 ? " selected" : "") + ">位置控制 (Angle)</option>";
     html += "<option value='2'" + String(mode == 2 ? " selected" : "") + ">扭矩控制 (Torque)</option>";
+    html += "<option value='3'" + String(mode == 3 ? " selected" : "") + ">震动模式 (Vibration)</option>";
     html += "</select>";
     html += "</div>";
 
@@ -171,6 +179,28 @@ void WebServerManager::handleRoot() {
 #endif
     html += "</div>";
 
+    // 震动模式输入
+    html += "<div id='vibration-input' style='display:" + String(mode == 3 ? "block" : "none") + ";'>";
+    float vib_amp, vib_freq, vib_torque;
+    motorControl->getVibrationParams(vib_amp, vib_freq, vib_torque);
+    html += "<label for='vib_amp'>🌊 振幅 (rad):</label>";
+    html += "<input type='number' id='vib_amp' name='vib_amp' step='0.1' value='" + String(vib_amp, 2) + "'>";
+    html += "<p class='info'>震动的角度范围</p>";
+    html += "<label for='vib_freq'>⚡ 频率 (Hz):</label>";
+    html += "<input type='number' id='vib_freq' name='vib_freq' step='0.1' value='" + String(vib_freq, 2) + "'>";
+    html += "<p class='info'>每秒震动次数</p>";
+    html += "<label for='vib_torque'>💪 扭矩限制:";
+#if CURRENT_SENSE_TYPE > 0
+    html += " (A)</label>";
+    html += "<input type='number' id='vib_torque' name='vib_torque' step='0.1' value='" + String(vib_torque, 2) + "'>";
+    html += "<p class='info'>震动时的电流限制</p>";
+#else
+    html += " (V)</label>";
+    html += "<input type='number' id='vib_torque' name='vib_torque' step='0.1' value='" + String(vib_torque, 2) + "'>";
+    html += "<p class='info'>震动时的电压限制</p>";
+#endif
+    html += "</div>";
+
     html += "<button type='submit'>✓ 应用设置</button>";
     html += "</form>";
     html += "</div>";
@@ -185,6 +215,7 @@ void WebServerManager::handleRoot() {
     html += "  document.getElementById('velocity-input').style.display = (mode == '0') ? 'block' : 'none';";
     html += "  document.getElementById('angle-input').style.display = (mode == '1') ? 'block' : 'none';";
     html += "  document.getElementById('torque-input').style.display = (mode == '2') ? 'block' : 'none';";
+    html += "  document.getElementById('vibration-input').style.display = (mode == '3') ? 'block' : 'none';";
     html += "}";
     // 自动刷新
     html += "setTimeout(function(){ location.reload(); }, " + String(WEB_REFRESH_INTERVAL) + ");";
@@ -289,7 +320,7 @@ void WebServerManager::handleSetMode() {
         int mode = server.arg("mode").toInt();
         motorControl->setControlMode(mode);
 
-        String modeNames[] = {"速度控制", "位置控制", "扭矩控制"};
+        String modeNames[] = {"速度控制", "位置控制", "扭矩控制", "震动模式"};
         String html = "<!DOCTYPE html><html><head>";
         html += "<meta charset='UTF-8'>";
         html += "<meta http-equiv='refresh' content='1;url=/'>";
@@ -334,7 +365,7 @@ void WebServerManager::handleSetControl() {
     }
 
     int mode = server.arg("mode").toInt();
-    String modeNames[] = {"速度控制", "位置控制", "扭矩控制"};
+    String modeNames[] = {"速度控制", "位置控制", "扭矩控制", "震动模式"};
     String resultMsg = "";
 
     // 切换控制模式
@@ -377,6 +408,18 @@ void WebServerManager::handleSetControl() {
             }
             break;
 
+        case 3:  // 震动模式
+            if (server.hasArg("vib_amp") && server.hasArg("vib_freq") && server.hasArg("vib_torque")) {
+                float amplitude = server.arg("vib_amp").toFloat();
+                float frequency = server.arg("vib_freq").toFloat();
+                float torque = server.arg("vib_torque").toFloat();
+                motorControl->setVibrationParams(amplitude, frequency, torque);
+                resultMsg = "振幅: <strong>" + String(amplitude, 2) + " rad</strong>, 频率: <strong>" + String(frequency, 2) + " Hz</strong>";
+            } else {
+                resultMsg = "模式已切换，请设置震动参数";
+            }
+            break;
+
         default:
             server.send(400, "text/plain", "Invalid mode");
             return;
@@ -401,5 +444,56 @@ void WebServerManager::handleSetControl() {
     html += "</body></html>";
 
     server.send(200, "text/html", html);
+}
+
+// 震动模式设置处理
+void WebServerManager::handleSetVibration() {
+    if (!motorControl->checkControlPermission(MotorControl::CONTROL_WEB)) {
+        String html = "<!DOCTYPE html><html><head>";
+        html += "<meta charset='UTF-8'>";
+        html += "<title>控制权限被占用</title></head><body>";
+        html += "<h1 style='color:red;'>⚠️ 控制权限被占用</h1>";
+        html += "<p>当前控制权被<strong>串口上位机</strong>占用</p>";
+        html += "<p><a href='/'>返回主页</a></p>";
+        html += "</body></html>";
+        server.send(403, "text/html", html);
+        return;
+    }
+
+    if (server.hasArg("amplitude") && server.hasArg("frequency") && server.hasArg("torque")) {
+        float amplitude = server.arg("amplitude").toFloat();
+        float frequency = server.arg("frequency").toFloat();
+        float torque = server.arg("torque").toFloat();
+
+        motorControl->setVibrationParams(amplitude, frequency, torque);
+        motorControl->setControlMode(3);
+
+        String html = "<!DOCTYPE html><html><head>";
+        html += "<meta charset='UTF-8'>";
+        html += "<meta http-equiv='refresh' content='1;url=/'>";
+        html += "<style>";
+        html += "body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }";
+        html += ".message { background: white; padding: 30px; border-radius: 10px; display: inline-block; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }";
+        html += "h2 { color: #4CAF50; }";
+        html += "</style>";
+        html += "</head><body>";
+        html += "<div class='message'>";
+        html += "<h2>✓ 震动模式设置成功!</h2>";
+        html += "<p>振幅: <strong>" + String(amplitude, 2) + " rad</strong></p>";
+        html += "<p>频率: <strong>" + String(frequency, 2) + " Hz</strong></p>";
+        html += "<p>扭矩: <strong>" + String(torque, 2);
+#if CURRENT_SENSE_TYPE > 0
+        html += " A</strong></p>";
+#else
+        html += " V</strong></p>";
+#endif
+        html += "<p>正在返回...</p>";
+        html += "</div>";
+        html += "</body></html>";
+
+        server.send(200, "text/html", html);
+    } else {
+        server.send(400, "text/plain", "Missing parameters");
+    }
 }
 

@@ -40,14 +40,14 @@ void setup() {
         while(1) { delay(1000); }
     }
 
-    // // 连接WiFi
-    // if (!wifiManager.connect()) {
-    //     Serial.println("WARNING: WiFi connection failed!");
-    //     Serial.println("System will continue without WiFi...");
-    // } else {
-    //     // 启动Web服务器
-    //     webServer.begin();
-    // }
+    // 连接WiFi
+    if (!wifiManager.connect()) {
+        Serial.println("WARNING: WiFi connection failed!");
+        Serial.println("System will continue without WiFi...");
+    } else {
+        // 启动Web服务器
+        webServer.begin();
+    }
 
     Serial.println("\n========================================");
     Serial.println("System Ready!");
@@ -70,6 +70,9 @@ void loop() {
         case 2:  // 扭矩控制
             motorControl.move(motorControl.getTargetTorque());
             break;
+        case 3:  // 震动模式
+            motorControl.updateVibration();
+            break;
     }
 
     // 处理串口命令
@@ -78,8 +81,8 @@ void loop() {
     // 自动发送串口数据
     serialProtocol.update();
 
-    // // 处理Web请求
-    // if (wifiManager.isConnected()) {
-    //     webServer.handleClient();
-    // }
+    // 处理Web请求
+    if (wifiManager.isConnected()) {
+        webServer.handleClient();
+    }
 }

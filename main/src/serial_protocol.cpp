@@ -90,6 +90,9 @@ void SerialProtocol::parseCommand(char* cmd) {
             motorControl->setControlSource(MotorControl::CONTROL_NONE);
             sendAckOK("RELEASE");
         }
+        else if (strcmp(cmd, "SET_VIBRATION") == 0) {
+            handleSetVibration(params);
+        }
         else {
             sendAckError(cmd, "UNSUPPORTED");
         }
@@ -114,6 +117,10 @@ void SerialProtocol::handleSetMode(char* params) {
     }
     else if (strcmp(params, "CURR") == 0) {
         motorControl->setControlMode(2);  // 电流控制
+        sendAckOK("SET_MODE");
+    }
+    else if (strcmp(params, "VIB") == 0) {
+        motorControl->setControlMode(3);  // 震动模式
         sendAckOK("SET_MODE");
     }
     else {
@@ -532,6 +539,20 @@ void SerialProtocol::sendMotorData() {
     Serial.print(current_sp, 3);
     Serial.print(",");
     Serial.println(current_limit, 3);
+}
+
+// 设置震动参数
+void SerialProtocol::handleSetVibration(char* params) {
+    // 串口控制自动获取控制权
+    motorControl->setControlSource(MotorControl::CONTROL_SERIAL);
+
+    char* ptr = params;
+    float amplitude = atof(nextToken(&ptr, ','));
+    float frequency = atof(nextToken(&ptr, ','));
+    float torque = atof(nextToken(&ptr, ','));
+
+    motorControl->setVibrationParams(amplitude, frequency, torque);
+    sendAckOK("SET_VIBRATION");
 }
 
 // 发送电流数据帧

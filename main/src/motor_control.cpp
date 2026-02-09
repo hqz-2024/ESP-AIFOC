@@ -56,6 +56,11 @@ MotorControl::MotorControl()
       target_angle(0.0f),
       target_torque(0.0f),
       control_mode(CONTROL_MODE),
+      vibration_amplitude(0.5f),
+      vibration_frequency(1.0f),
+      vibration_torque(1.0f),
+      vibration_last_time(0),
+      vibration_phase(0.0f),
       current_control_source(CONTROL_NONE)
 {
     g_motorControl = this;
@@ -124,6 +129,10 @@ bool MotorControl::init() {
         case 2:  // 扭矩控制
             motor.controller = MotionControlType::torque;
             INIT_PRINTLN("Control mode: Torque");
+            break;
+        case 3:  // 震动模式
+            motor.controller = MotionControlType::angle;
+            INIT_PRINTLN("Control mode: Vibration");
             break;
         default:
             motor.controller = MotionControlType::velocity;
@@ -269,8 +278,8 @@ void MotorControl::setTargetTorque(float torque) {
 
 // 切换控制模式
 void MotorControl::setControlMode(int mode) {
-    if (mode < 0 || mode > 2) {
-        DEBUG_PRINTLN("Invalid control mode! Use 0=velocity, 1=angle, 2=torque");
+    if (mode < 0 || mode > 3) {
+        DEBUG_PRINTLN("Invalid control mode! Use 0=velocity, 1=angle, 2=torque, 3=vibration");
         return;
     }
 
@@ -288,6 +297,12 @@ void MotorControl::setControlMode(int mode) {
         case 2:
             motor.controller = MotionControlType::torque;
             DEBUG_PRINTLN("Control mode changed to: Torque");
+            break;
+        case 3:
+            motor.controller = MotionControlType::angle;
+            vibration_phase = 0.0f;
+            vibration_last_time = millis();
+            DEBUG_PRINTLN("Control mode changed to: Vibration");
             break;
     }
 }
@@ -689,5 +704,54 @@ void MotorControl::printSensorInfo() {
 
     Serial.println("====================================");
     Serial.println();
+}
+
+// 设置震动参数
+void MotorControl::setVibrationParams(float amplitude, float frequency, float torque) {
+    vibration_amplitude = amplitude;
+    vibration_frequency = frequency;
+    vibration_torque = torque;
+
+    DEBUG_PRINT("Vibration params set - Amplitude: ");
+    DEBUG_PRINT(amplitude);
+    DEBUG_PRINT(" rad, Frequency: ");
+    DEBUG_PRINT(frequency);
+    DEBUG_PRINT(" Hz, Torque: ");
+    DEBUG_PRINTLN(torque);
+}
+
+// 获取震动参数
+void MotorControl::getVibrationParams(float& amplitude, float& frequency, float& torque) {
+    amplitude = vibration_amplitude;
+    frequency = vibration_frequency;
+    torque = vibration_torque;
+}
+
+// 更新震动（在loop中调用）
+void MotorControl::updateVibration() {
+    if (control_mode != 3) return;
+
+    unsigned long current_time = millis();
+    float dt = (current_time - vibration_last_time) / 1000.0f;
+    vibration_last_time = current_time;
+
+    // 更新相位
+    vibration_phase += 2.0f * PI * vibration_frequency * dt;
+    if (vibration_phase > 2.0f * PI) {
+        vibration_phase -= 2.0f * PI;
+    }
+
+    // 计算目标角度（正弦波）
+    float target = vibration_amplitude * sin(vibration_phase);
+
+    // 设置扭矩限制
+#if CURRENT_SENSE_TYPE > 0
+    motor.current_limit = vibration_torque;
+#else
+    motor.voltage_limit = vibration_torque;
+#endif
+
+    // 应用目标
+    motor.move(target);
 }
 

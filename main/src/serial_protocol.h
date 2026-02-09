@@ -49,6 +49,7 @@ private:
     void handleStream(char* params);
     void handleGetPID(char* params);
     void handleGetLimit(char* params);
+    void handleSetVibration(char* params);
     
     // 发送PID参数
     void sendPIDParams(const char* type, PIDController* pid, LowPassFilter* lpf);

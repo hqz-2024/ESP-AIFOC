@@ -75,6 +75,7 @@ class ModeControlWidget(QGroupBox):
     """控制模式设置组件"""
     mode_changed = pyqtSignal(str)      # 模式改变信号
     target_changed = pyqtSignal(float)  # 目标值改变信号
+    vibration_changed = pyqtSignal(float, float, float)  # 震动参数改变信号
 
     def __init__(self, parent=None):
         super().__init__("控制模式", parent)
@@ -86,7 +87,7 @@ class ModeControlWidget(QGroupBox):
 
         # 模式选择
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(['VEL (速度)', 'POS (位置)', 'CURR (电流)'])
+        self.mode_combo.addItems(['VEL (速度)', 'POS (位置)', 'CURR (电流)', 'VIB (震动)'])
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         layout.addRow("模式:", self.mode_combo)
 
@@ -107,6 +108,39 @@ class ModeControlWidget(QGroupBox):
         self.mode_apply_btn.clicked.connect(self._on_mode_apply)
         layout.addRow(self.mode_apply_btn)
 
+        # 震动模式参数
+        self.vib_group = QGroupBox("震动参数")
+        vib_layout = QFormLayout()
+
+        self.vib_amp_spin = QDoubleSpinBox()
+        self.vib_amp_spin.setRange(0, 10)
+        self.vib_amp_spin.setDecimals(2)
+        self.vib_amp_spin.setValue(0.5)
+        self.vib_amp_spin.setSuffix(" rad")
+        vib_layout.addRow("振幅:", self.vib_amp_spin)
+
+        self.vib_freq_spin = QDoubleSpinBox()
+        self.vib_freq_spin.setRange(0.1, 100)
+        self.vib_freq_spin.setDecimals(2)
+        self.vib_freq_spin.setValue(1.0)
+        self.vib_freq_spin.setSuffix(" Hz")
+        vib_layout.addRow("频率:", self.vib_freq_spin)
+
+        self.vib_torque_spin = QDoubleSpinBox()
+        self.vib_torque_spin.setRange(0, 50)
+        self.vib_torque_spin.setDecimals(2)
+        self.vib_torque_spin.setValue(1.0)
+        self.vib_torque_spin.setSuffix(" A/V")
+        vib_layout.addRow("扭矩限制:", self.vib_torque_spin)
+
+        self.vib_apply_btn = QPushButton("应用震动参数")
+        self.vib_apply_btn.clicked.connect(self._on_vibration_apply)
+        vib_layout.addRow(self.vib_apply_btn)
+
+        self.vib_group.setLayout(vib_layout)
+        self.vib_group.setVisible(False)
+        layout.addRow(self.vib_group)
+
     def _on_mode_apply(self):
         """应用模式"""
         mode_text = self.mode_combo.currentText()
@@ -120,6 +154,16 @@ class ModeControlWidget(QGroupBox):
     def _on_mode_changed(self):
         """模式改变时更新目标值范围"""
         self._update_target_range()
+        mode_text = self.mode_combo.currentText()
+        mode = mode_text.split()[0]
+        self.vib_group.setVisible(mode == "VIB")
+
+    def _on_vibration_apply(self):
+        """应用震动参数"""
+        amplitude = self.vib_amp_spin.value()
+        frequency = self.vib_freq_spin.value()
+        torque = self.vib_torque_spin.value()
+        self.vibration_changed.emit(amplitude, frequency, torque)
 
     def set_velocity_limit(self, limit: float):
         """设置速度限制，并更新目标速度范围"""
@@ -132,17 +176,19 @@ class ModeControlWidget(QGroupBox):
         mode = mode_text.split()[0]
 
         if mode == "VEL":
-            # 速度模式：范围为 [-velocity_limit, velocity_limit]
+            self.target_spin.setEnabled(True)
             self.target_spin.setRange(-self._velocity_limit, self._velocity_limit)
             self.target_spin.setSuffix(" rad/s")
         elif mode == "POS":
-            # 位置模式：范围不受限制
+            self.target_spin.setEnabled(True)
             self.target_spin.setRange(-1000, 1000)
             self.target_spin.setSuffix(" rad")
         elif mode == "CURR":
-            # 电流模式：范围不受限制（电流限制在下位机处理）
+            self.target_spin.setEnabled(True)
             self.target_spin.setRange(-50, 50)
             self.target_spin.setSuffix(" A")
+        elif mode == "VIB":
+            self.target_spin.setEnabled(False)
 
 
 class PIDWidget(QGroupBox):
@@ -380,6 +426,7 @@ class ControlPanel(QWidget):
         # 模式控制
         self.mode_widget.mode_changed.connect(self._on_mode_changed)
         self.mode_widget.target_changed.connect(self._on_target_changed)
+        self.mode_widget.vibration_changed.connect(self._on_vibration_changed)
 
         # PID控制
         for pid_widget in [self.pid_vel, self.pid_ang, self.pid_iq, self.pid_id]:
@@ -399,6 +446,11 @@ class ControlPanel(QWidget):
     def _on_target_changed(self, value: float):
         """目标值改变"""
         cmd = f"SET_TARGET,{value}"
+        self.send_command.emit(cmd)
+
+    def _on_vibration_changed(self, amplitude: float, frequency: float, torque: float):
+        """震动参数改变"""
+        cmd = f"SET_VIBRATION,{amplitude},{frequency},{torque}"
         self.send_command.emit(cmd)
 
     def _on_pid_changed(self, loop: str, p: float, i: float, d: float, lpf: float):

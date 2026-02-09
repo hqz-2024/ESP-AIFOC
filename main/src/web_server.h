@@ -27,6 +27,7 @@ private:
     void handleSetTorque();
     void handleSetMode();
     void handleSetControl();  // 统一控制接口
+    void handleSetVibration();  // 震动模式设置
 
     // 静态包装函数（用于WebServer回调）
     static void handleRootStatic();
@@ -35,6 +36,7 @@ private:
     static void handleSetTorqueStatic();
     static void handleSetModeStatic();
     static void handleSetControlStatic();  // 统一控制接口
+    static void handleSetVibrationStatic();  // 震动模式设置
     
     // 静态实例指针
     static WebServerManager* instance;

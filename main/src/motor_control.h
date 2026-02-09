@@ -38,8 +38,13 @@ public:
     void setTargetTorque(float torque);
 
     // 切换控制模式
-    void setControlMode(int mode);  // 0=velocity, 1=angle, 2=torque
+    void setControlMode(int mode);  // 0=velocity, 1=angle, 2=torque, 3=vibration
     int getControlMode();
+
+    // 震动模式控制
+    void setVibrationParams(float amplitude, float frequency, float torque);
+    void getVibrationParams(float& amplitude, float& frequency, float& torque);
+    void updateVibration();  // 在loop中调用以更新震动
 
     // PID参数设置
     void setPIDVelocity(float P, float I, float D, float LPF);
@@ -132,7 +137,14 @@ private:
     float target_velocity;
     float target_angle;
     float target_torque;
-    int control_mode;  // 0=velocity, 1=angle, 2=torque
+    int control_mode;  // 0=velocity, 1=angle, 2=torque, 3=vibration
+
+    // 震动模式参数
+    float vibration_amplitude;   // 震动振幅 (rad)
+    float vibration_frequency;   // 震动频率 (Hz)
+    float vibration_torque;      // 震动扭矩限制 (A或V)
+    unsigned long vibration_last_time;  // 上次更新时间
+    float vibration_phase;       // 当前相位
 
     // 控制权限
     ControlSource current_control_source;
